@@ -88,10 +88,11 @@ final class NotchWindowController {
         startHoverPolling()
 
         if ProcessInfo.processInfo.environment["CLAUDENOTCH_DEBUG"] != nil {
-            NSLog("[ClaudeNotch] notch=%@ 刘海宽=%.0f 菜单栏高=%.0f 折叠尺寸=%.0fx%.0f 屏=%@",
+            NSLog("[ClaudeNotch] notch=%@ 刘海宽=%.0f 菜单栏高=%.0f 折叠=%.0fx%.0f 触发区=%.0fx%.0f 屏=%@",
                   geometry.hasRealNotch ? "yes" : "no",
                   geometry.notchSize.width, geometry.menuBarHeight,
-                  collapsedSize.width, collapsedSize.height, geometry.screen.localizedName)
+                  collapsedSize.width, collapsedSize.height,
+                  triggerRect.width, triggerRect.height, geometry.screen.localizedName)
         }
     }
 
@@ -125,10 +126,11 @@ final class NotchWindowController {
 
     private func recomputeRects() {
         expandedRect = geometry.windowFrame(for: expandedSize)
-        // 触发区：比可见药丸更宽，并贴住屏幕最顶边，方便“甩到顶部”命中
+        // 触发区：紧贴可见药丸（仅菜单栏那一条），避免还没到状态栏就展开。
+        // 因为轮询会读到“甩到顶”的静止位置、且顶边按开区间处理，所以这条窄带也能稳稳接住甩动手势。
         let sf = geometry.screen.frame
-        let tw = collapsedSize.width + 120        // 340
-        let th: CGFloat = 70
+        let tw = collapsedSize.width + 24          // 药丸宽 + 少量左右余量
+        let th = geometry.menuBarHeight + 6        // 菜单栏条 + 一点下方宽限
         triggerRect = NSRect(x: sf.midX - tw / 2, y: sf.maxY - th, width: tw, height: th)
     }
 
