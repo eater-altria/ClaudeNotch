@@ -26,8 +26,11 @@ final class NotchWindowController {
     private var hosting: NSHostingView<AnyView>!
     private var geometry: NotchGeometry
 
-    // 折叠态高度跟随菜单栏高度，使药丸底边与状态栏底边齐平、不外露
-    private var collapsedSize: CGSize { CGSize(width: 220, height: geometry.menuBarHeight) }
+    // 折叠态：真刘海设备对齐检测到的刘海宽度；无刘海用 220。高度跟随菜单栏高度。
+    private var collapsedSize: CGSize {
+        let w = geometry.hasRealNotch ? geometry.notchSize.width : 220
+        return CGSize(width: w, height: geometry.menuBarHeight)
+    }
     private let expandedSize = CGSize(width: 440, height: 516)
 
     // 固定命中矩形（屏幕全局坐标，原点左下）
@@ -51,7 +54,8 @@ final class NotchWindowController {
         self.sessionStore = sessionStore
         self.geometry = NotchGeometry.current()
 
-        panel = NSPanel(contentRect: NSRect(origin: .zero, size: CGSize(width: 220, height: geometry.menuBarHeight)),
+        let initW = geometry.hasRealNotch ? geometry.notchSize.width : 220
+        panel = NSPanel(contentRect: NSRect(origin: .zero, size: CGSize(width: initW, height: geometry.menuBarHeight)),
                         styleMask: [.borderless, .nonactivatingPanel],
                         backing: .buffered, defer: false)
         panel.isFloatingPanel = true
@@ -82,6 +86,13 @@ final class NotchWindowController {
         recomputeRects()
         applyFrame(animated: false)
         startHoverPolling()
+
+        if ProcessInfo.processInfo.environment["CLAUDENOTCH_DEBUG"] != nil {
+            NSLog("[ClaudeNotch] notch=%@ 刘海宽=%.0f 菜单栏高=%.0f 折叠尺寸=%.0fx%.0f 屏=%@",
+                  geometry.hasRealNotch ? "yes" : "no",
+                  geometry.notchSize.width, geometry.menuBarHeight,
+                  collapsedSize.width, collapsedSize.height, geometry.screen.localizedName)
+        }
     }
 
     deinit {

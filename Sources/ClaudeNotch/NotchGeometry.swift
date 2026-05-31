@@ -20,11 +20,12 @@ struct NotchGeometry {
         let menuBar = measuredBar > 1 ? measuredBar : 24
 
         if topInset > 0 {
-            // 刘海宽度 = 屏宽 - 左侧菜单区 - 右侧菜单区
+            // 刘海宽度 = 屏宽 - 左侧菜单区 - 右侧菜单区（含合理性夹紧，异常时回退 200）
             let full = screen.frame.width
             let left = screen.auxiliaryTopLeftArea?.width ?? 0
             let right = screen.auxiliaryTopRightArea?.width ?? 0
-            let width = max(180, full - left - right)
+            let raw = full - left - right
+            let width: CGFloat = (raw > 100 && raw < 400) ? raw : 200
             return NotchGeometry(screen: screen, hasRealNotch: true,
                                  notchSize: CGSize(width: width, height: topInset),
                                  menuBarHeight: menuBar)

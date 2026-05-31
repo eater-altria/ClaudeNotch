@@ -37,7 +37,7 @@ struct NotchRootView: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    private var topRadius: CGFloat { hasRealNotch ? 0 : 14 }
+    private var topRadius: CGFloat { 14 }   // 顶部圆角（真刘海/模拟岛一致）
     private var expanded: Bool { islandState.expanded }
     private var palette: Palette { Palette(isDark: colorScheme == .dark) }
 
