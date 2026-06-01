@@ -77,6 +77,8 @@ _assemble:
 	rm -rf $(BUNDLE)
 	mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources
 	cp "$(BIN)" $(BUNDLE)/Contents/MacOS/$(APP_NAME)
+	cp Resources/AppIcon.icns $(BUNDLE)/Contents/Resources/AppIcon.icns
+	cp Resources/MenuBarIcon.png $(BUNDLE)/Contents/Resources/MenuBarIcon.png
 	cp Resources/Info.plist $(BUNDLE)/Contents/Info.plist
 
 clean:

@@ -1,0 +1,54 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="122" y1="112" x2="920" y2="940" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF5C1E"/>
+      <stop offset="0.6" stop-color="#FF741F"/>
+      <stop offset="1" stop-color="#FFAD33"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(678 768) rotate(134.397) scale(456.208)">
+      <stop stop-color="#FFE6A3" stop-opacity="0.74"/>
+      <stop offset="1" stop-color="#FFE6A3" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="cream" x1="690" y1="630" x2="856" y2="842" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF8E6"/>
+      <stop offset="1" stop-color="#F4D998"/>
+    </linearGradient>
+    <linearGradient id="darkRing" x1="839" y1="616" x2="924" y2="930" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#43302A"/>
+      <stop offset="1" stop-color="#1A120F"/>
+    </linearGradient>
+    <filter id="shadow" x="120" y="128" width="814" height="800" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="188" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="188" fill="url(#glow)"/>
+  <rect x="70" y="70" width="884" height="884" rx="182" stroke="#FFC864" stroke-width="10"/>
+  <rect x="64" y="64" width="896" height="896" rx="188" stroke="#1D130F" stroke-width="16"/>
+
+  <g filter="url(#shadow)">
+    <rect x="160" y="310" width="116" height="344" rx="58" fill="#09090E"/>
+    <rect x="165" y="315" width="106" height="334" rx="53" stroke="#F2B751" stroke-width="4"/>
+
+    <g stroke="#FFF8EC" stroke-width="22" stroke-linecap="round">
+      <path d="M536 470V334"/>
+      <path d="M536 470L612 352"/>
+      <path d="M536 470L692 408"/>
+      <path d="M536 470L722 500"/>
+      <path d="M536 470L698 598"/>
+      <path d="M536 470L592 688"/>
+      <path d="M536 470L480 688"/>
+      <path d="M536 470L374 598"/>
+      <path d="M536 470L350 500"/>
+      <path d="M536 470L380 408"/>
+      <path d="M536 470L460 352"/>
+    </g>
+    <circle cx="536" cy="470" r="22" fill="#FFF8EC"/>
+
+    <circle cx="736" cy="744" r="164" stroke="url(#cream)" stroke-width="58" stroke-dasharray="510 600" stroke-linecap="round" transform="rotate(-44 736 744)"/>
+    <circle cx="736" cy="744" r="164" stroke="url(#darkRing)" stroke-width="58" stroke-dasharray="345 765" stroke-dashoffset="-520" stroke-linecap="round" transform="rotate(-44 736 744)"/>
+    <circle cx="826" cy="668" r="26" fill="#FFF1CB"/>
+    <circle cx="826" cy="668" r="28" stroke="rgba(255,255,255,0.6)" stroke-width="4"/>
+  </g>
+</svg>

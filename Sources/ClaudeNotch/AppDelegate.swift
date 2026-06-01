@@ -38,13 +38,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "gauge.with.dots.needle.50percent",
-                                   accessibilityDescription: "Claude 额度")
+            button.image = makeStatusIcon()
             button.imagePosition = .imageLeading
         }
         let menu = NSMenu()
         menu.delegate = self          // 打开时动态重建（登录/退出登录随状态变化）
         statusItem.menu = menu
+    }
+
+    private func makeStatusIcon() -> NSImage? {
+        let image = Bundle.main.image(forResource: "MenuBarIcon")
+        image?.isTemplate = true
+        image?.size = NSSize(width: 18, height: 18)
+        image?.accessibilityDescription = "Claude 额度"
+        return image
     }
 
     private func observeStore() {

@@ -8,6 +8,9 @@ Package.resolved
 *.dmg
 *.zip
 
+# 图标中间产物（可由 Tools/generate_icons.py 从 AppIconSource.png 重新生成）
+Resources/AppIcon.iconset/
+
 # macOS
 .DS_Store
 
