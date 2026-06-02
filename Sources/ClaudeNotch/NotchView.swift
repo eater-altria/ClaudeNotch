@@ -34,6 +34,7 @@ struct NotchRootView: View {
     var hasRealNotch: Bool = false
     var onLogin: () -> Void
     var onRefresh: () -> Void
+    var onSessionTap: (SessionInfo) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -236,7 +237,7 @@ struct NotchRootView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 11) {
                         ForEach(sessionStore.sessions) { s in
-                            SessionRowView(session: s)
+                            SessionRowView(session: s, onTap: { onSessionTap(s) })
                         }
                     }
                 }
@@ -304,7 +305,9 @@ struct InlineLabelStyle: LabelStyle {
 
 struct SessionRowView: View {
     let session: SessionInfo
+    var onTap: () -> Void = {}
     @Environment(\.palette) private var palette
+    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -337,10 +340,22 @@ struct SessionRowView: View {
 
             Spacer(minLength: 7)
 
-            Text(String(format: "≈$%.2f", session.costUSD))
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(palette.text(0.85))
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(String(format: "≈$%.2f", session.costUSD))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(palette.text(0.85))
+                if session.jump != nil {
+                    Image(systemName: "arrow.up.forward.app")
+                        .font(.system(size: 9))
+                        .foregroundStyle(palette.text(hovering ? 0.7 : 0.3))
+                }
+            }
         }
+        .padding(.vertical, 3).padding(.horizontal, 4)
+        .background(RoundedRectangle(cornerRadius: 7).fill(palette.text(hovering ? 0.08 : 0)))
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture { onTap() }
     }
 }
 

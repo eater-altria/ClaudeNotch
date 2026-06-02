@@ -1,6 +1,19 @@
 import Foundation
 import SwiftUI
 
+/// 会话所属终端类型（用于跳转到对应 tab）
+enum TerminalKind {
+    case warp, terminalApp, iterm, kitty, wezterm, ghostty, vscode, unknown
+}
+
+/// 跳转到会话所在终端 tab 所需的信息。
+struct JumpTarget {
+    let kind: TerminalKind
+    let tty: String?            // /dev/ttysNNN（Terminal.app / iTerm2 按此匹配 tab）
+    let warpFocusURL: String?   // warp://session/<uuid>（Warp 精确跳转）
+    let appURL: URL?            // 终端 .app 路径（兜底激活）
+}
+
 /// 一个活跃 Claude Code 会话的汇总信息（从 transcript JSONL 解析得出）。
 struct SessionInfo: Identifiable {
     let id: String              // sessionId（缺失时退化为文件名）
@@ -12,6 +25,7 @@ struct SessionInfo: Identifiable {
     let contextTokens: Int       // 当前上下文占用（最近一次请求的总输入）
     let contextWindow: Int       // 上下文窗口（环形图分母）
     let lastActivity: Date
+    var jump: JumpTarget? = nil  // 跳转目标（由进程匹配后附加）
 
     var contextPercent: Int {
         guard contextWindow > 0 else { return 0 }

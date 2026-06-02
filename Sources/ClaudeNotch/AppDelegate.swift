@@ -7,7 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let store = UsageStore()
     private let sessionStore = SessionStore()
     private let settings = SettingsStore()
-    private var notchController: NotchWindowController!
+    private var notchManager: NotchManager!
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
     private var cancellable: Any?
@@ -16,9 +16,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         NSApp.setActivationPolicy(.accessory)   // 无 Dock 图标
         settings.applyAppearance()               // init 不触发 didSet，启动时手动应用一次
 
-        notchController = NotchWindowController(store: store, sessionStore: sessionStore)
-        settings.onIslandEnabledChange = { [weak self] on in self?.notchController.setEnabled(on) }
-        notchController.setEnabled(settings.islandEnabled)
+        notchManager = NotchManager(
+            store: store, sessionStore: sessionStore, settings: settings,
+            onSessionTap: { session in
+                if let jump = session.jump { TerminalJumper.jump(jump) }
+            })
+        settings.onIslandEnabledChange = { [weak self] on in self?.notchManager.setEnabled(on) }
+        settings.onDisplaySettingsChange = { [weak self] in self?.notchManager.rebuild() }
+        notchManager.rebuild()
+
+        NotificationManager.shared.setEnabled(settings.notificationsEnabled)
 
         setupStatusItem()
         observeStore()
@@ -32,7 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     @objc private func screensChanged() {
-        notchController.relocate()
+        settings.refreshScreens()
+        notchManager.rebuild()
     }
 
     private func setupStatusItem() {

@@ -7,6 +7,7 @@ struct LiveClaude {
     let cwd: String
     let dirName: String     // cwd 对应的 Claude Code 项目目录名
     let startTime: Date     // 进程启动时间——用于与 transcript 创建时间配对
+    let jump: JumpTarget?   // 跳转到该会话所在终端 tab 的信息
 }
 
 /// 通过 libproc 探测运行中的 Claude Code 进程。
@@ -43,6 +44,88 @@ enum ProcessProbe {
     /// 例：/Users/altria/projects -> -Users-altria-projects
     static func projectDirName(for cwd: String) -> String {
         String(cwd.map { ($0.isLetter || $0.isNumber) ? $0 : "-" })
+    }
+
+    /// 进程的控制终端设备名，如 /dev/ttys001。
+    static func tty(_ pid: pid_t) -> String? {
+        var bsd = proc_bsdinfo()
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bsd, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0 else { return nil }
+        let tdev = bsd.e_tdev
+        guard tdev != 0, tdev != UInt32.max else { return nil }
+        guard let namePtr = devname(dev_t(bitPattern: tdev), mode_t(S_IFCHR)) else { return nil }
+        return "/dev/" + String(cString: namePtr)
+    }
+
+    /// 解析进程环境变量（从 KERN_PROCARGS2 缓冲区，跳过 argc 个 argv 后即为 env）。
+    static func envVars(_ pid: pid_t) -> [String: String] {
+        var mib = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > 4 else { return [:] }
+        var buf = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0 else { return [:] }
+        let argc = Int(buf.withUnsafeBytes { $0.load(as: Int32.self) })
+        var i = 4
+        while i < size, buf[i] != 0 { i += 1 }   // 跳过 exec_path
+        while i < size, buf[i] == 0 { i += 1 }    // 跳过对齐
+        var read = 0                              // 跳过 argc 个参数
+        while i < size, read < argc {
+            while i < size, buf[i] != 0 { i += 1 }
+            i += 1; read += 1
+        }
+        var env: [String: String] = [:]           // 余下为 env
+        while i < size {
+            while i < size, buf[i] == 0 { i += 1 }
+            if i >= size { break }
+            let start = i
+            while i < size, buf[i] != 0 { i += 1 }
+            let s = String(decoding: buf[start..<i], as: UTF8.self)
+            if let eq = s.firstIndex(of: "=") {
+                env[String(s[..<eq])] = String(s[s.index(after: eq)...])
+            }
+            i += 1
+        }
+        return env
+    }
+
+    /// 沿父进程链向上找到第一个 .app 祖先（即承载的终端 app）。
+    static func terminalAppURL(_ pid: pid_t) -> URL? {
+        var cur = pid
+        for _ in 0..<8 {
+            var bsd = proc_bsdinfo()
+            guard proc_pidinfo(cur, PROC_PIDTBSDINFO, 0, &bsd, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0 else { return nil }
+            let ppid = pid_t(bsd.pbi_ppid)
+            guard ppid > 1 else { return nil }
+            var pathBuf = [CChar](repeating: 0, count: 4096)
+            if proc_pidpath(ppid, &pathBuf, 4096) > 0 {
+                let path = String(cString: pathBuf)
+                if let r = path.range(of: ".app/Contents/MacOS/") {
+                    return URL(fileURLWithPath: String(path[..<r.lowerBound]) + ".app")
+                }
+            }
+            cur = ppid
+        }
+        return nil
+    }
+
+    /// 综合 env + tty + 父链，构造跳转目标。
+    static func makeJump(pid: pid_t) -> JumpTarget {
+        let env = envVars(pid)
+        let termProgram = env["TERM_PROGRAM"] ?? ""
+        let kind: TerminalKind
+        switch termProgram {
+        case "WarpTerminal":   kind = .warp
+        case "iTerm.app":      kind = .iterm
+        case "Apple_Terminal": kind = .terminalApp
+        case "vscode":         kind = .vscode
+        case "ghostty":        kind = .ghostty
+        case "WezTerm":        kind = .wezterm
+        default:
+            if env["KITTY_WINDOW_ID"] != nil || (env["TERM"] ?? "").contains("kitty") { kind = .kitty }
+            else { kind = .unknown }
+        }
+        return JumpTarget(kind: kind, tty: tty(pid),
+                          warpFocusURL: env["WARP_FOCUS_URL"],
+                          appURL: terminalAppURL(pid))
     }
 
     /// 所有运行中的 claude CLI 进程（含 cwd 与启动时间）。
@@ -83,7 +166,8 @@ enum ProcessProbe {
 
             result.append(LiveClaude(pid: pid, cwd: cwd,
                                      dirName: projectDirName(for: cwd),
-                                     startTime: startTime(pid) ?? .distantPast))
+                                     startTime: startTime(pid) ?? .distantPast,
+                                     jump: makeJump(pid: pid)))
         }
         return result
     }

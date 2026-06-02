@@ -79,9 +79,32 @@ final class UsageStore: ObservableObject {
             let now = Date()
             let snap = UsageSnapshot(from: result, fetchedAt: now)
             updateProjections(for: snap, now: now)
+            checkThresholdNotifications(snap)
             snapshot = snap
             lastUpdated = now
             state = .ready
+        }
+    }
+
+    // 额度阈值通知：跨过 80% / 95% 各提醒一次；用量回落（窗口刷新）后复位可再次提醒。
+    private var notifiedThreshold: [String: Int] = [:]
+    private let thresholds = [95, 80]
+
+    private func checkThresholdNotifications(_ snap: UsageSnapshot) {
+        for m in snap.allMetrics {
+            let used = m.percentUsed
+            let band = thresholds.first(where: { used >= $0 }) ?? 0   // 当前所处档位 0/80/95
+            let last = notifiedThreshold[m.id] ?? 0
+            if band > last {
+                notifiedThreshold[m.id] = band
+                NotificationManager.shared.notify(
+                    id: "quota-\(m.id)-\(band)",
+                    title: "Claude 额度提醒",
+                    body: "\(m.title) 已用 \(used)%，仅剩 \(m.percentRemaining)%")
+            } else if band < last {
+                // 用量回落到更低档：重新武装，使再次升到该档时仍会提醒
+                notifiedThreshold[m.id] = band
+            }
         }
     }
 

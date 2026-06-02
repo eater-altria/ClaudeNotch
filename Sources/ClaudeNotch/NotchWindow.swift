@@ -25,6 +25,9 @@ final class NotchWindowController {
     private let islandState = IslandState()
     private var hosting: NSHostingView<AnyView>!
     private var geometry: NotchGeometry
+    private var screen: NSScreen
+    let screenID: String
+    private let onSessionTap: (SessionInfo) -> Void
 
     // 折叠态：真刘海设备对齐检测到的刘海宽度；无刘海用 220。高度跟随菜单栏高度。
     private var collapsedSize: CGSize {
@@ -49,10 +52,14 @@ final class NotchWindowController {
     var expanded: Bool { islandState.expanded }
     private var enabled = true   // 灵动岛总开关
 
-    init(store: UsageStore, sessionStore: SessionStore) {
+    init(screen: NSScreen, store: UsageStore, sessionStore: SessionStore,
+         onSessionTap: @escaping (SessionInfo) -> Void) {
+        self.screen = screen
+        self.screenID = screen.uniqueID
         self.store = store
         self.sessionStore = sessionStore
-        self.geometry = NotchGeometry.current()
+        self.onSessionTap = onSessionTap
+        self.geometry = NotchGeometry.make(for: screen)
 
         let initW = geometry.hasRealNotch ? geometry.notchSize.width : 220
         panel = NSPanel(contentRect: NSRect(origin: .zero, size: CGSize(width: initW, height: geometry.menuBarHeight)),
@@ -77,7 +84,8 @@ final class NotchWindowController {
             onRefresh: { [weak self] in
                 Task { await self?.store.refresh() }
                 self?.sessionStore.refresh()
-            }
+            },
+            onSessionTap: onSessionTap
         )
         hosting = NSHostingView(rootView: AnyView(root))
         hosting.autoresizingMask = [.width, .height]
@@ -117,9 +125,21 @@ final class NotchWindowController {
     }
 
     func relocate() {
-        geometry = NotchGeometry.current()
+        // 显示器配置变化后，按唯一 ID 重新拿到（可能被替换的）NSScreen 对象
+        if let s = NSScreen.screens.first(where: { $0.uniqueID == screenID }) {
+            screen = s
+        }
+        geometry = NotchGeometry.make(for: screen)
         recomputeRects()
         applyFrame(animated: false)
+    }
+
+    /// 彻底关闭挂件（管理器移除该屏时调用）。
+    func close() {
+        hoverTimer?.invalidate()
+        hoverTimer = nil
+        cancelExpand(); cancelCollapse()
+        panel.orderOut(nil)
     }
 
     // MARK: - 固定命中矩形
@@ -144,10 +164,11 @@ final class NotchWindowController {
         hoverTimer = timer
     }
 
-    /// 顶部锚定区域的包含判定：上边**不封顶**（光标到不了屏幕顶以上），其余边闭区间。
-    /// 解决 CGRect.contains 把上边缘当开区间、导致“光标贴最顶 y==maxY 被判 false”的死区问题。
+    /// 顶部锚定区域的包含判定：各边闭区间（含上边 maxY）。
+    /// - 上边用闭区间 `<= r.maxY`（而非 CGRect.contains 的开区间）→ 仍能接住“光标贴最顶 y==maxY”的甩动；
+    /// - 同时 maxY 即本屏顶，**封住了上界** → 上方堆叠的另一块屏上的光标（y > 本屏 maxY）不会误触发本屏挂件。
     private func inTopZone(_ p: CGPoint, _ r: NSRect) -> Bool {
-        return p.x >= r.minX && p.x <= r.maxX && p.y >= r.minY
+        return p.x >= r.minX && p.x <= r.maxX && p.y >= r.minY && p.y <= r.maxY
     }
 
     private func evaluateHover() {

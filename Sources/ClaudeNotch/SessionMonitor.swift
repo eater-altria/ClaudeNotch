@@ -54,15 +54,19 @@ final class SessionScanner {
                     return Candidate(url: f, creation: v?.creationDate ?? .distantPast, mtime: mt)
                 }
 
-            for url in Self.assign(procs: procs, candidates: candidates) {
+            for (url, proc) in Self.assign(procs: procs, candidates: candidates) {
                 let mtime = candidates.first { $0.url == url }?.mtime ?? .distantPast
+                var info: SessionInfo?
                 if let cached = cache[url.path], cached.mtime == mtime {
-                    if let info = cached.info { result.append(info) }
-                    continue
+                    info = cached.info
+                } else {
+                    info = Self.parse(file: url, mtime: mtime)
+                    cache[url.path] = (mtime, info)
                 }
-                let info = Self.parse(file: url, mtime: mtime)
-                cache[url.path] = (mtime, info)
-                if let info { result.append(info) }
+                if var i = info {
+                    i.jump = proc.jump   // 附加该进程的终端跳转信息
+                    result.append(i)
+                }
             }
         }
         return result.sorted { $0.lastActivity > $1.lastActivity }
@@ -71,7 +75,7 @@ final class SessionScanner {
     /// 把同目录下的活进程配对到各自的 transcript：
     /// ① 先按“启动时间 ↔ 创建时间”最近、容差内做唯一贪心匹配（新会话精确对应）；
     /// ② 仍未配上的进程（如 --resume：进程新、文件旧），从剩余文件里按 mtime 最近补齐。
-    private static func assign(procs: [LiveClaude], candidates: [Candidate]) -> [URL] {
+    private static func assign(procs: [LiveClaude], candidates: [Candidate]) -> [(url: URL, proc: LiveClaude)] {
         let tolerance: TimeInterval = 300   // 启动与创建相差 5 分钟内视为同一会话
 
         // ① 生成所有容差内的 (进程,文件) 配对，按时间差升序贪心唯一分配
@@ -85,22 +89,22 @@ final class SessionScanner {
         pairs.sort { $0.diff < $1.diff }
 
         var usedProc = Set<Int>(), usedCand = Set<Int>()
-        var chosen: [URL] = []
+        var chosen: [(url: URL, proc: LiveClaude)] = []
         for pair in pairs {
             if usedProc.contains(pair.pi) || usedCand.contains(pair.ci) { continue }
             usedProc.insert(pair.pi); usedCand.insert(pair.ci)
-            chosen.append(candidates[pair.ci].url)
+            chosen.append((candidates[pair.ci].url, procs[pair.pi]))
         }
 
-        // ② 兜底：剩余进程数 → 剩余文件里按 mtime 最近补齐（覆盖 resume 场景）
-        let leftover = procs.count - usedProc.count
-        if leftover > 0 {
+        // ② 兜底：未配上的进程（如 --resume）→ 剩余文件按 mtime 最近补齐
+        let leftoverProcs = procs.indices.filter { !usedProc.contains($0) }
+        if !leftoverProcs.isEmpty {
             let remaining = candidates.indices
                 .filter { !usedCand.contains($0) }
                 .sorted { candidates[$0].mtime > candidates[$1].mtime }
-            for ci in remaining.prefix(leftover) {
+            for (k, ci) in remaining.prefix(leftoverProcs.count).enumerated() {
                 usedCand.insert(ci)
-                chosen.append(candidates[ci].url)
+                chosen.append((candidates[ci].url, procs[leftoverProcs[k]]))
             }
         }
         return chosen
@@ -221,7 +225,28 @@ final class SessionStore: ObservableObject {
         queue.async { [weak self] in
             guard let self else { return }
             let result = self.scanner.scan(maxAge: age)
-            DispatchQueue.main.async { self.sessions = result }
+            DispatchQueue.main.async {
+                self.sessions = result
+                self.checkContextNotifications(result)
+            }
+        }
+    }
+
+    // 上下文告警：某会话上下文 ≥90% 提醒一次（建议 /compact）；回落后可再次提醒。
+    private var notifiedContext: Set<String> = []
+
+    private func checkContextNotifications(_ sessions: [SessionInfo]) {
+        for s in sessions where s.contextPercent >= 90 && !notifiedContext.contains(s.id) {
+            notifiedContext.insert(s.id)
+            NotificationManager.shared.notify(
+                id: "ctx-\(s.id)",
+                title: "上下文将满",
+                body: "\(s.projectName) 上下文已用 \(s.contextPercent)%，建议 /compact 或新开会话")
+        }
+        // 只在"本次扫描确实出现、且已回落到 <90"时解除标记。
+        // 会话短暂从扫描中消失（非真正结束）不解除，避免重现时重复轰炸。
+        for s in sessions where s.contextPercent < 90 {
+            notifiedContext.remove(s.id)
         }
     }
 }

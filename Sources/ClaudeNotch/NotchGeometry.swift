@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 
 /// 计算挂件应该贴在哪块屏幕的什么位置。
 /// - 有真刘海：用 safeAreaInsets / auxiliary 区域算出刘海宽高。
@@ -9,11 +10,18 @@ struct NotchGeometry {
     let notchSize: CGSize      // 真刘海或模拟岛“缺口”的尺寸
     let menuBarHeight: CGFloat // 菜单栏高度（折叠态药丸高度据此，避免露出状态栏下沿）
 
-    static func current() -> NotchGeometry {
-        // 优先选带刘海的屏；否则用主屏
-        let notched = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 })
-        let screen = notched ?? NSScreen.main ?? NSScreen.screens.first!
+    /// 默认屏：优先带刘海的屏，否则主屏。
+    static func autoScreen() -> NSScreen {
+        NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 })
+            ?? NSScreen.main ?? NSScreen.screens.first!
+    }
 
+    static func current() -> NotchGeometry {
+        make(for: autoScreen())
+    }
+
+    /// 为指定屏计算几何。
+    static func make(for screen: NSScreen) -> NotchGeometry {
         let topInset = screen.safeAreaInsets.top
         // 菜单栏高度：刘海屏用 safeArea，否则用 frame 顶到 visibleFrame 顶的距离
         let measuredBar = topInset > 0 ? topInset : (screen.frame.maxY - screen.visibleFrame.maxY)
@@ -44,4 +52,24 @@ struct NotchGeometry {
         let y = sf.maxY - size.height   // 紧贴屏幕顶部
         return NSRect(x: x, y: y, width: size.width, height: size.height)
     }
+}
+
+extension NSScreen {
+    /// CGDirectDisplayID（连接期间稳定）
+    var displayID: CGDirectDisplayID {
+        (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
+    }
+
+    /// 稳定且唯一的显示器标识：优先用 display UUID（跨重连更稳），回退 displayID。
+    /// 用于字典键与设置持久化——绝不用 localizedName（同型号两台会重名碰撞）。
+    var uniqueID: String {
+        let did = displayID
+        if did != 0, let uuid = CGDisplayCreateUUIDFromDisplayID(did)?.takeRetainedValue() {
+            return CFUUIDCreateString(nil, uuid) as String
+        }
+        return String(did)
+    }
+
+    /// 用户可见标签（可能重复）
+    var displayLabel: String { localizedName }
 }
