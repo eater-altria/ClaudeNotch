@@ -25,6 +25,8 @@
          托盘文件 UI/Tray.cs 显式 using System.Windows.Forms / System.Drawing。 -->
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
+    <!-- 该 WPF/WinForms 工程的隐式 using 不含 System.IO，显式补上（File/Path/Directory 等） -->
+    <Using Include="System.IO" />
   </ItemGroup>
 
   <ItemGroup>
