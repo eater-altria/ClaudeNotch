@@ -7,10 +7,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let store = UsageStore()
     private let sessionStore = SessionStore()
     private let settings = SettingsStore()
+    private let historyStore = UsageHistoryStore()
     private var notchManager: NotchManager!
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
+    private var analyticsWindow: NSWindow?
     private var cancellable: Any?
     private var staleTimer: Timer?
 
@@ -181,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.removeAllItems()
 
         menu.addItem(withTitle: "设置…", action: #selector(openSettings), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: "数据统计…", action: #selector(openAnalytics), keyEquivalent: "d").target = self
         menu.addItem(withTitle: "立即刷新", action: #selector(refreshAction), keyEquivalent: "r").target = self
         menu.addItem(withTitle: "检查更新…", action: #selector(checkUpdateAction), keyEquivalent: "").target = self
 
@@ -194,6 +197,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
     @objc private func checkUpdateAction() { UpdateChecker.checkInteractively() }
     @objc private func quitAction() { NSApp.terminate(nil) }
+
+    @objc private func openAnalytics() {
+        if analyticsWindow == nil {
+            let hosting = NSHostingController(rootView: AnalyticsView(store: historyStore, hover: HoverModel()))
+            let win = NSWindow(contentViewController: hosting)
+            win.title = "ClaudeNotch 数据统计"
+            win.styleMask = [.titled, .closable, .resizable, .miniaturizable]
+            win.isReleasedWhenClosed = false
+            win.delegate = self
+            win.setContentSize(NSSize(width: 980, height: 720))
+            win.minSize = NSSize(width: 820, height: 560)
+            win.setFrameAutosaveName("ClaudeNotchAnalytics")
+            win.center()
+            analyticsWindow = win
+        }
+        historyStore.refreshIfNeeded()        // 懒构建：仅首次打开窗口时扫描历史
+        NSApp.setActivationPolicy(.regular)
+        analyticsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     @objc private func openSettings() {
         if settingsWindow == nil {
@@ -216,9 +239,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if w === onboardingWindow {
             settings.didOnboard = true        // 关掉引导（含直接点 X）即视为已做过一次选择，不再每次弹
             onboardingWindow = nil
+        } else if w === analyticsWindow {
+            analyticsWindow = nil             // 下次打开重建（数据绑定保持新鲜）
+        } else if w === settingsWindow {
+            settingsWindow = nil              // 必须置 nil，否则下面的判断永远为假、退不回 accessory（Dock 图标残留）
         }
         // 仅当不再有任何前台窗口时，才退回无 Dock 图标的 accessory 策略。
-        if settingsWindow == nil && onboardingWindow == nil {
+        if settingsWindow == nil && onboardingWindow == nil && analyticsWindow == nil {
             NSApp.setActivationPolicy(.accessory)
         }
     }

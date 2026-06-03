@@ -113,8 +113,6 @@ final class SessionScanner {
         return chosen
     }
 
-    private static func iv(_ a: Any?) -> Int { (a as? NSNumber)?.intValue ?? 0 }
-
     /// 单个 transcript 文件的解析结果。
     private struct FileParse {
         var cost: Double = 0          // 已按 messageId 去重、按各消息自身模型计价
@@ -135,44 +133,19 @@ final class SessionScanner {
         var seen = Set<String>()
 
         content.enumerateLines { line, _ in
-            guard let d = line.data(using: .utf8),
-                  let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
-                  (o["type"] as? String) == "assistant",
-                  let msg = o["message"] as? [String: Any],
-                  let usage = msg["usage"] as? [String: Any] else { return }
-
-            let inp = iv(usage["input_tokens"])
-            let out = iv(usage["output_tokens"])
-            let cr = iv(usage["cache_read_input_tokens"])
-            var cw5 = 0, cw1h = 0
-            if let cc = usage["cache_creation"] as? [String: Any] {
-                cw5 = iv(cc["ephemeral_5m_input_tokens"])
-                cw1h = iv(cc["ephemeral_1h_input_tokens"])
-            } else {
-                cw5 = iv(usage["cache_creation_input_tokens"])
-            }
-            let model = (msg["model"] as? String) ?? ""
-
+            guard let p = parseAssistantUsageLine(line) else { return }
             // 上下文用最后一条（重复行 usage 相同，无影响），与去重无关
-            if !model.isEmpty { r.lastModel = model }
-            if let s = o["sessionId"] as? String { r.sid = s }
-            if let c = o["cwd"] as? String { r.cwd = c }
-            if let b = o["gitBranch"] as? String { r.branch = b }
-            let ctx = inp + cr + cw5 + cw1h
-            r.lastCtx = ctx
-            r.peakCtx = max(r.peakCtx, ctx)
+            if !p.model.isEmpty { r.lastModel = p.model }
+            if !p.sessionId.isEmpty { r.sid = p.sessionId }
+            if !p.cwd.isEmpty { r.cwd = p.cwd }
+            if let b = p.gitBranch { r.branch = b }
+            r.lastCtx = p.contextTokens
+            r.peakCtx = max(r.peakCtx, p.contextTokens)
 
             // 成本去重：同一 messageId 只计一次
-            let mid = (msg["id"] as? String) ?? (o["uuid"] as? String) ?? ""
-            guard seen.insert(mid).inserted else { return }
+            guard seen.insert(p.messageId).inserted else { return }
             r.sawAssistant = true
-
-            let p = ModelPricing.lookup(model)
-            r.cost += (Double(inp) * p.input
-                       + Double(out) * p.output
-                       + Double(cr) * p.cacheRead
-                       + Double(cw5) * p.cacheWrite5m
-                       + Double(cw1h) * p.cacheWrite1h) / 1_000_000.0
+            r.cost += p.tokens.cost(model: p.model)
         }
         return r.sawAssistant ? r : nil
     }
