@@ -129,11 +129,13 @@ public static class StatuslineHook
 
     public static void EnsureInstalled()
     {
-        // 已安装且命令仍指向当前助手/主程序所在目录则跳过；否则（被移动/换构建/跨机同步）重装。
+        // 已安装且命令已指向“当前应注册的命令”才跳过；否则重装。
+        // 关键：有专用助手时必须指向助手——否则旧版(主 exe --statusline)升级后不会切换到助手。
         var helper = Paths.StatuslineHelperExe;
         var current = CurrentCommand();
-        bool pointsHere = current is not null && (current.Contains(helper) || current.Contains(Paths.ExePath));
-        if (IsInstalled && pointsHere) return;
+        bool ok = current is not null &&
+                  (File.Exists(helper) ? current.Contains(helper) : current.Contains(Paths.ExePath));
+        if (IsInstalled && ok) return;
         Install();
     }
 
