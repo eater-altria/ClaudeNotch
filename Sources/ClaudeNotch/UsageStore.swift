@@ -78,8 +78,8 @@ final class UsageStore: ObservableObject {
                 notifiedThreshold[m.id] = band
                 NotificationManager.shared.notify(
                     id: "quota-\(m.id)-\(band)",
-                    title: "Claude 额度提醒",
-                    body: "\(m.title) 已用 \(used)%，仅剩 \(m.percentRemaining)%",
+                    title: tr("Claude 额度提醒", "Claude Usage Alert"),
+                    body: tr("\(m.title) 已用 \(used)%，仅剩 \(m.percentRemaining)%", "\(m.title) at \(used)% used, only \(m.percentRemaining)% left"),
                     sound: criticalSoundEnabled && band >= quotaCriticalBand)
             } else if band < last {
                 // 用量回落到更低档：重新武装，使再次升到该档时仍会提醒
@@ -118,10 +118,10 @@ final class UsageStore: ObservableObject {
     }
 
     var lastUpdatedText: String {
-        guard let t = lastUpdated else { return "尚未更新" }
+        guard let t = lastUpdated else { return tr("尚未更新", "Not updated yet") }
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
-        return "更新于 " + f.string(from: t)
+        return tr("更新于 ", "Updated at ") + f.string(from: t)
     }
 
     // MARK: - 数据新鲜度（额度只在 Claude Code 渲染状态栏时更新，可能悄悄过期）
@@ -136,14 +136,14 @@ final class UsageStore: ObservableObject {
 
     /// 相对新鲜度文案：「刚刚更新」/「12 分钟前更新」/「2 小时前更新」。
     var freshnessText: String {
-        guard let t = lastUpdated else { return "尚未更新" }
+        guard let t = lastUpdated else { return tr("尚未更新", "Not updated yet") }
         let secs = Date().timeIntervalSince(t)
-        if secs < 90 { return "刚刚更新" }
+        if secs < 90 { return tr("刚刚更新", "Just updated") }
         let mins = Int(secs / 60)
-        if mins < 60 { return "\(mins) 分钟前更新" }
+        if mins < 60 { return tr("\(mins) 分钟前更新", "Updated \(mins) min ago") }
         let h = mins / 60
-        if h < 24 { return "\(h) 小时前更新" }
-        return "\(h / 24) 天前更新"
+        if h < 24 { return tr("\(h) 小时前更新", "Updated \(h) h ago") }
+        return tr("\(h / 24) 天前更新", "Updated \(h / 24) d ago")
     }
 
     /// 仅在不陈旧时给出投影（陈旧数据的「还剩 N 分钟用尽」会脱离现实地一直缩小）。

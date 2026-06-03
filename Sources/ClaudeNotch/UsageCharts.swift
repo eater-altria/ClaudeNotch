@@ -21,7 +21,7 @@ struct TrendChart: View {
         }
         Chart {
             ForEach(Array(pts.enumerated()), id: \.offset) { _, p in
-                BarMark(x: .value("日期", p.date, unit: .day),
+                BarMark(x: .value(tr("日期", "Date"), p.date, unit: .day),
                         y: .value(metric.label, p.value))
                     .foregroundStyle(chartGreen)
             }
@@ -31,7 +31,8 @@ struct TrendChart: View {
                 AxisGridLine()
                 AxisValueLabel {
                     if let v = value.as(Double.self) {
-                        Text(metric == .cost ? String(format: "$%.0f", v) : formatTokens(Int(v)))
+                        Text(metric == .cost ? money(v, decimals: 0) : formatTokens(Int(v)))
+                            .font(.system(size: 11))
                     }
                 }
             }
@@ -51,8 +52,9 @@ struct TrendChart: View {
                                 let origin = geo.frame(in: .named(kAnalyticsSpace)).origin
                                 hover.payload = HoverPayload(
                                     title: dayDateString(date),
-                                    lines: ["Billable \(formatTokens(s.tokens.billable)) · Total \(formatTokens(s.tokens.total))",
-                                            String(format: "≈$%.2f · %d 条", s.cost, s.messageCount)],
+                                    lines: [tr("计费 \(formatTokens(s.tokens.billable)) · 合计 \(formatTokens(s.tokens.total))",
+                                               "Billable \(formatTokens(s.tokens.billable)) · Total \(formatTokens(s.tokens.total))"),
+                                            approxMoney(s.cost) + " · " + tr("\(s.messageCount) 条", "\(s.messageCount) msgs")],
                                     point: CGPoint(x: origin.x + loc.x, y: origin.y + loc.y))
                             } else { hover.payload = nil }
                         case .ended:
@@ -85,17 +87,17 @@ struct PunchCardChart: View {
 
         return Chart {
             ForEach(Array(pts.enumerated()), id: \.offset) { _, p in
-                PointMark(x: .value("时", p.hour), y: .value("星期", p.wd))
+                PointMark(x: .value(tr("时", "Hour"), p.hour), y: .value(tr("星期", "Weekday"), p.wd))
                     .symbolSize(by: .value("tokens", p.v))
                     .foregroundStyle(chartGreen)
             }
         }
         .chartXScale(domain: -0.5...23.5)
         .chartXAxis { AxisMarks(values: [0, 6, 12, 18, 23]) { v in
-            AxisValueLabel { if let h = v.as(Int.self) { Text("\(h)时") } } } }
+            AxisValueLabel { if let h = v.as(Int.self) { Text(tr("\(h)时", "\(h):00")).font(.system(size: 11)) } } } }
         .chartYScale(domain: -0.5...6.5)
         .chartYAxis { AxisMarks(values: Array(0..<7)) { v in
-            AxisValueLabel { if let i = v.as(Int.self), i < syms.count { Text(syms[i]) } } } }
+            AxisValueLabel { if let i = v.as(Int.self), i < syms.count { Text(syms[i]).font(.system(size: 11)) } } } }
         .chartLegend(.hidden)
         .chartOverlay { proxy in
             GeometryReader { geo in
@@ -114,7 +116,7 @@ struct PunchCardChart: View {
                                 let origin = geo.frame(in: .named(kAnalyticsSpace)).origin
                                 hover.payload = HoverPayload(
                                     title: "\(syms[wd]) \(hr):00–\(hr):59",
-                                    lines: ["Billable \(formatTokens(grid[wd][hr]))"],
+                                    lines: [tr("计费 \(formatTokens(grid[wd][hr]))", "Billable \(formatTokens(grid[wd][hr]))")],
                                     point: CGPoint(x: origin.x + loc.x, y: origin.y + loc.y))
                             } else { hover.payload = nil }
                         case .ended:

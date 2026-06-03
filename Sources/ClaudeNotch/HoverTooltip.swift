@@ -22,15 +22,15 @@ struct TooltipCard: View {
     let title: String
     let lines: [String]
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.caption.bold())
-            ForEach(lines, id: \.self) { Text($0).font(.caption2).foregroundStyle(.secondary) }
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.system(size: 13, weight: .bold))
+            ForEach(lines, id: \.self) { Text($0).font(.system(size: 12)).foregroundStyle(.secondary) }
         }
-        .padding(.horizontal, 8).padding(.vertical, 6)
+        .padding(.horizontal, 10).padding(.vertical, 7)
         .background(RoundedRectangle(cornerRadius: 6).fill(.regularMaterial))
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.12)))
         .shadow(radius: 5, y: 2)
-        .frame(maxWidth: 260, alignment: .leading)
+        .frame(maxWidth: 300, alignment: .leading)
     }
 }
 
@@ -43,7 +43,7 @@ struct HoverOverlay: View {
                 TooltipCard(title: h.title, lines: h.lines)
                     .fixedSize()
                     .allowsHitTesting(false)
-                    .offset(x: min(max(8, h.point.x + 14), max(8, geo.size.width - 270)),
+                    .offset(x: min(max(8, h.point.x + 14), max(8, geo.size.width - 310)),
                             y: min(max(8, h.point.y + 16), max(8, geo.size.height - 96)))
             }
         }

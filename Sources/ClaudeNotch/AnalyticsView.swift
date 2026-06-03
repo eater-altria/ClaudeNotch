@@ -20,11 +20,11 @@ struct AnalyticsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if store.isBuilding, let p = store.progress {
-                        ProgressView(value: p) { Text("正在扫描历史 transcript… \(Int(p * 100))%").font(.caption) }
+                        ProgressView(value: p) { Text(tr("正在扫描历史 transcript… \(Int(p * 100))%", "Scanning history transcripts… \(Int(p * 100))%")).font(.caption) }
                     }
                     kpiStrip(h)
 
-                    GroupBox("每日用量 · \(metric.label)") {
+                    GroupBox(tr("每日用量 · \(metric.label)", "Daily usage · \(metric.label)")) {
                         VStack(alignment: .leading, spacing: 8) {
                             HeatmapView(history: h, metric: metric, range: range, selectedDay: $selectedDay, hover: hover)
                             if let day = selectedDay, let s = h.days[day], let d = DayKey.toDate(day) {
@@ -41,11 +41,11 @@ struct AnalyticsView: View {
                         cachePanel(agg); streaksPanel(h)
                     }
 
-                    GroupBox("趋势 · \(metric.label)（\(range.label)）") { TrendChart(history: h, metric: metric, range: range, hover: hover) }
-                    GroupBox("时段打卡（billable，\(range.label)）") { PunchCardChart(history: h, range: range, hover: hover) }
+                    GroupBox(tr("趋势 · \(metric.label)（\(range.label)）", "Trend · \(metric.label) (\(range.label))")) { TrendChart(history: h, metric: metric, range: range, hover: hover) }
+                    GroupBox(tr("时段打卡（billable，\(range.label)）", "Hourly punch card (billable, \(range.label))")) { PunchCardChart(history: h, range: range, hover: hover) }
 
-                    Text("「花费」按 API 单价折算，订阅用户并不按此单独计费；第三方子代理模型按 Sonnet 近似（标「估」）。时间按本地日历分桶。")
-                        .font(.caption2).foregroundStyle(.secondary)
+                    Text(tr("「花费」按 API 单价折算，订阅用户并不按此单独计费；第三方子代理模型按 Sonnet 近似（标「估」）。时间按本地日历分桶。", "“Cost” is estimated at API rates; subscription users are not billed separately for this. Third-party subagent models are approximated as Sonnet (marked “est”). Times are bucketed by local calendar."))
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
                 .padding(16)
             }
@@ -60,7 +60,7 @@ struct AnalyticsView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Text("数据统计").font(.headline)
+            Text(tr("数据统计", "Analytics")).font(.headline)
             Spacer()
             Picker("", selection: $metric) {
                 ForEach(HeatmapMetric.allCases) { Text($0.label).tag($0) }
@@ -69,10 +69,10 @@ struct AnalyticsView: View {
                 ForEach(HistoryRange.allCases) { Text($0.label).tag($0) }
             }.frame(width: 110).labelsHidden()
             Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
-                .disabled(store.isBuilding).help("重新扫描")
+                .disabled(store.isBuilding).help(tr("重新扫描", "Rescan"))
             Menu {
-                Button("导出 CSV…") { exportCSV() }
-                Button("导出 JSON…") { exportJSON() }
+                Button(tr("导出 CSV…", "Export CSV…")) { exportCSV() }
+                Button(tr("导出 JSON…", "Export JSON…")) { exportJSON() }
             } label: { Image(systemName: "square.and.arrow.up") }
             .frame(width: 44)
         }
@@ -83,18 +83,18 @@ struct AnalyticsView: View {
 
     private func kpiStrip(_ h: UsageHistory) -> some View {
         HStack(spacing: 10) {
-            kpi("今日", h.today())
-            kpi("7 天", h.recent(days: 7))
-            kpi("30 天", h.recent(days: 30))
-            kpi("累计", h.lifetime)
+            kpi(tr("今日", "Today"), h.today())
+            kpi(tr("7 天", "7 days"), h.recent(days: 7))
+            kpi(tr("30 天", "30 days"), h.recent(days: 30))
+            kpi(tr("累计", "All time"), h.lifetime)
         }
     }
     private func kpi(_ title: String, _ s: DayStat) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(String(format: "≈$%.2f", s.cost)).font(.title3.weight(.semibold).monospacedDigit())
-            Text("\(formatTokens(s.tokens.billable)) billable · \(s.messageCount) 条")
-                .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            Text(title).font(.system(size: 13)).foregroundStyle(.secondary)
+            Text(approxMoney(s.cost)).font(.title2.weight(.semibold).monospacedDigit())
+            Text("\(formatTokens(s.tokens.billable)) billable · " + tr("\(s.messageCount) 条", "\(s.messageCount) msgs"))
+                .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading).padding(10)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
@@ -108,17 +108,17 @@ struct AnalyticsView: View {
         let items = kept.map { (raw: $0.key, tokens: $0.value) }
             .sorted { $0.tokens.billable > $1.tokens.billable }.prefix(6)
         let maxV = items.map { $0.tokens.billable }.max() ?? 1
-        return panel("按模型") {
-            if items.isEmpty { hint("暂无数据") }
+        return panel(tr("按模型", "By model")) {
+            if items.isEmpty { hint(tr("暂无数据", "No data")) }
             else {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, it in
-                    barRow(label: shortModelName(it.raw) + (isApproxPriced(it.raw) ? " ·估" : ""),
+                    barRow(label: shortModelName(it.raw) + (isApproxPriced(it.raw) ? tr(" ·估", " ·est") : ""),
                            value: it.tokens.billable, maxValue: maxV,
-                           trailing: String(format: "$%.2f", it.tokens.cost(model: it.raw)),
-                           hoverTitle: shortModelName(it.raw) + (isApproxPriced(it.raw) ? "（估价）" : ""),
+                           trailing: money(it.tokens.cost(model: it.raw)),
+                           hoverTitle: shortModelName(it.raw) + (isApproxPriced(it.raw) ? tr("（估价）", " (est.)") : ""),
                            hoverLines: ["Billable \(it.tokens.billable.formatted()) · \(pct(it.tokens.billable, total))",
                                         "Total \(it.tokens.total.formatted())",
-                                        String(format: "≈$%.2f", it.tokens.cost(model: it.raw))])
+                                        approxMoney(it.tokens.cost(model: it.raw))])
                 }
             }
         }
@@ -129,8 +129,8 @@ struct AnalyticsView: View {
         let items = agg.perProject.map { (name: $0.key, v: $0.value) }
             .sorted { $0.v > $1.v }.prefix(6)
         let maxV = items.map { $0.v }.max() ?? 1
-        return panel("按项目 Top") {
-            if items.isEmpty { hint("暂无数据") }
+        return panel(tr("按项目 Top", "Top projects")) {
+            if items.isEmpty { hint(tr("暂无数据", "No data")) }
             else {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, it in
                     barRow(label: it.name, value: it.v, maxValue: maxV, trailing: formatTokens(it.v),
@@ -148,22 +148,22 @@ struct AnalyticsView: View {
     private func cachePanel(_ agg: DayStat) -> some View {
         let cr = agg.tokens.cacheRead, bill = agg.tokens.billable
         let ratio = bill > 0 ? Double(cr) / Double(bill) : 0
-        return panel("缓存效率") {
+        return panel(tr("缓存效率", "Cache efficiency")) {
             infoRow("cache_read", formatTokens(cr))
             infoRow("billable", formatTokens(bill))
             infoRow("read / billable", String(format: "%.1f×", ratio))
-            Text(ratio > 8 ? "上下文重放较多，可留意 /compact 或新开会话" : "正常范围")
-                .font(.caption2).foregroundStyle(.secondary)
+            Text(ratio > 8 ? tr("上下文重放较多，可留意 /compact 或新开会话", "Heavy context replay; consider /compact or a fresh session") : tr("正常范围", "Normal range"))
+                .font(.system(size: 12)).foregroundStyle(.secondary)
         }
     }
 
     private func streaksPanel(_ h: UsageHistory) -> some View {
         let st = h.streaks(metric: metric)
-        return panel("连续 & 峰值") {
-            infoRow("当前连续", "\(st.current) 天")
-            infoRow("最长连续", "\(st.longest) 天")
+        return panel(tr("连续 & 峰值", "Streaks & peaks")) {
+            infoRow(tr("当前连续", "Current streak"), tr("\(st.current) 天", "\(st.current) days"))
+            infoRow(tr("最长连续", "Longest streak"), tr("\(st.longest) 天", "\(st.longest) days"))
             if let b = st.busiest, let d = DayKey.toDate(b.day) {
-                infoRow("最忙一天", dateStr(d) + " · " + metricStr(b.value))
+                infoRow(tr("最忙一天", "Busiest day"), dateStr(d) + " · " + metricStr(b.value))
             }
         }
     }
@@ -176,12 +176,12 @@ struct AnalyticsView: View {
         let models = s.perModel.filter { !isSyntheticModel($0.key) }.sorted { $0.value.billable > $1.value.billable }
             .prefix(4).map { shortModelName($0.key) }.joined(separator: " / ")
         return VStack(alignment: .leading, spacing: 4) {
-            Text(dateStr(d)).font(.subheadline.weight(.semibold))
+            Text(dateStr(d)).font(.system(size: 14, weight: .semibold))
             Text("Billable \(formatTokens(s.tokens.billable)) · Total \(formatTokens(s.tokens.total)) · "
-                 + String(format: "≈$%.2f", s.cost) + " · \(s.messageCount) 条")
-                .font(.caption).foregroundStyle(.secondary)
-            if !models.isEmpty { Text("模型：\(models)").font(.caption2).foregroundStyle(.secondary) }
-            if !topProj.isEmpty { Text("项目：\(topProj)").font(.caption2).foregroundStyle(.secondary) }
+                 + approxMoney(s.cost) + tr(" · \(s.messageCount) 条", " · \(s.messageCount) msgs"))
+                .font(.system(size: 13)).foregroundStyle(.secondary)
+            if !models.isEmpty { Text(tr("模型：\(models)", "Models: \(models)")).font(.system(size: 12)).foregroundStyle(.secondary) }
+            if !topProj.isEmpty { Text(tr("项目：\(topProj)", "Projects: \(topProj)")).font(.system(size: 12)).foregroundStyle(.secondary) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -194,15 +194,15 @@ struct AnalyticsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-    private func hint(_ s: String) -> some View { Text(s).font(.caption).foregroundStyle(.secondary) }
+    private func hint(_ s: String) -> some View { Text(s).font(.system(size: 13)).foregroundStyle(.secondary) }
     private func infoRow(_ k: String, _ v: String) -> some View {
-        HStack { Text(k).font(.caption).foregroundStyle(.secondary); Spacer()
-            Text(v).font(.caption.monospacedDigit()) }
+        HStack { Text(k).font(.system(size: 13)).foregroundStyle(.secondary); Spacer()
+            Text(v).font(.system(size: 13).monospacedDigit()) }
     }
     private func barRow(label: String, value: Int, maxValue: Int, trailing: String,
                         hoverTitle: String, hoverLines: [String]) -> some View {
         HStack(spacing: 8) {
-            Text(label).font(.caption).frame(width: 116, alignment: .leading)
+            Text(label).font(.system(size: 13)).frame(width: 130, alignment: .leading)
                 .lineLimit(1).truncationMode(.middle)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -210,9 +210,9 @@ struct AnalyticsView: View {
                     Capsule().fill(green)
                         .frame(width: max(2, geo.size.width * (maxValue > 0 ? CGFloat(value) / CGFloat(maxValue) : 0)))
                 }
-            }.frame(height: 9)
-            Text(trailing).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                .frame(width: 60, alignment: .trailing)
+            }.frame(height: 10)
+            Text(trailing).font(.system(size: 13).monospacedDigit()).foregroundStyle(.secondary)
+                .frame(width: 64, alignment: .trailing)
         }
         .contentShape(Rectangle())
         .onContinuousHover(coordinateSpace: .named(kAnalyticsSpace)) { phase in
@@ -224,11 +224,12 @@ struct AnalyticsView: View {
     }
 
     private func isApproxPriced(_ m: String) -> Bool {
+        if PriceCatalog.shared.match(m) != nil { return false }   // LiteLLM 有真实单价 → 非估
         let l = m.lowercased()
         return !(l.contains("opus") || l.contains("sonnet") || l.contains("haiku"))
     }
     private func metricStr(_ v: Double) -> String {
-        metric == .cost ? String(format: "≈$%.2f", v) : formatTokens(Int(v))
+        metric == .cost ? approxMoney(v) : formatTokens(Int(v))
     }
     private func dateStr(_ d: Date) -> String {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: d)

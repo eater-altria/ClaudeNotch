@@ -7,9 +7,9 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .system: return "跟随系统"
-        case .light: return "日间模式"
-        case .dark: return "夜间模式"
+        case .system: return tr("跟随系统", "System")
+        case .light: return tr("日间模式", "Light")
+        case .dark: return tr("夜间模式", "Dark")
         }
     }
 

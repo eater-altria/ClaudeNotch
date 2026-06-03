@@ -221,8 +221,8 @@ final class SessionStore: ObservableObject {
             notifiedContext.insert(s.id)
             NotificationManager.shared.notify(
                 id: "ctx-\(s.id)",
-                title: "上下文将满",
-                body: "\(s.projectName) 上下文已用 \(s.contextPercent)%，建议 /compact 或新开会话",
+                title: tr("上下文将满", "Context Almost Full"),
+                body: tr("\(s.projectName) 上下文已用 \(s.contextPercent)%，建议 /compact 或新开会话", "\(s.projectName) context at \(s.contextPercent)% used, consider /compact or a new session"),
                 sound: criticalSoundEnabled)
         }
         // 只在"本次扫描确实出现、且已回落到 <阈值"时解除标记。

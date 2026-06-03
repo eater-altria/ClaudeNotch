@@ -81,15 +81,19 @@ struct HeatmapView: View {
     }
 
     private func tooltip(_ c: HeatCell) -> String {
-        guard let s = history.days[c.day] else { return "\(dateString(c.date)) · 无活动" }
-        return "\(dateString(c.date)) · Billable \(formatTokens(s.tokens.billable)) · Total \(formatTokens(s.tokens.total)) · "
-             + String(format: "≈$%.2f", s.cost) + " · \(s.messageCount) 条"
+        guard let s = history.days[c.day] else { return "\(dateString(c.date)) · " + tr("无活动", "No activity") }
+        return "\(dateString(c.date)) · "
+             + tr("计费 \(formatTokens(s.tokens.billable)) · 合计 \(formatTokens(s.tokens.total))",
+                  "Billable \(formatTokens(s.tokens.billable)) · Total \(formatTokens(s.tokens.total))") + " · "
+             + approxMoney(s.cost) + " · "
+             + tr("\(s.messageCount) 条", "\(s.messageCount) msgs")
     }
 
     private func hoverLines(_ day: LocalDay) -> [String] {
-        guard let s = history.days[day] else { return ["无活动"] }
-        var lines = ["Billable \(formatTokens(s.tokens.billable)) · Total \(formatTokens(s.tokens.total))",
-                     String(format: "≈$%.2f · %d 条", s.cost, s.messageCount)]
+        guard let s = history.days[day] else { return [tr("无活动", "No activity")] }
+        var lines = [tr("计费 \(formatTokens(s.tokens.billable)) · 合计 \(formatTokens(s.tokens.total))",
+                        "Billable \(formatTokens(s.tokens.billable)) · Total \(formatTokens(s.tokens.total))"),
+                     approxMoney(s.cost) + " · " + tr("\(s.messageCount) 条", "\(s.messageCount) msgs")]
         let proj = s.perProject.sorted { $0.value > $1.value }.prefix(2)
             .map { "\($0.key) \(formatTokens($0.value))" }.joined(separator: " · ")
         if !proj.isEmpty { lines.append(proj) }
@@ -107,29 +111,29 @@ struct HeatmapView: View {
         return VStack(spacing: gap) {
             ForEach(0..<7, id: \.self) { row in
                 Text(row % 2 == 1 ? syms[row] : "")
-                    .font(.system(size: 8)).foregroundStyle(palette.text(0.45))
-                    .frame(width: 16, height: cell, alignment: .trailing)
+                    .font(.system(size: 11)).foregroundStyle(palette.text(0.45))
+                    .frame(width: 22, height: cell, alignment: .trailing)
             }
         }
     }
 
     private func monthLabels(_ model: HeatmapModel) -> some View {
         HStack(spacing: gap) {
-            Color.clear.frame(width: 16, height: 9)   // 对齐星期标签列
+            Color.clear.frame(width: 22, height: 12)   // 对齐星期标签列
             ForEach(Array(model.monthLabels.enumerated()), id: \.offset) { _, label in
-                Text(label).font(.system(size: 8)).foregroundStyle(palette.text(0.45))
-                    .frame(width: cell, height: 9, alignment: .leading)
+                Text(label).font(.system(size: 11)).foregroundStyle(palette.text(0.45))
+                    .frame(width: cell, height: 12, alignment: .leading)
             }
         }
     }
 
     private var legend: some View {
         HStack(spacing: 4) {
-            Text("少").font(.system(size: 8)).foregroundStyle(palette.text(0.45))
+            Text(tr("少", "Less")).font(.system(size: 11)).foregroundStyle(palette.text(0.45))
             ForEach(0..<5, id: \.self) { l in
-                RoundedRectangle(cornerRadius: 2).fill(heatColor(level: l)).frame(width: 10, height: 10)
+                RoundedRectangle(cornerRadius: 2).fill(heatColor(level: l)).frame(width: 11, height: 11)
             }
-            Text("多").font(.system(size: 8)).foregroundStyle(palette.text(0.45))
+            Text(tr("多", "More")).font(.system(size: 11)).foregroundStyle(palette.text(0.45))
         }
     }
 
@@ -163,7 +167,7 @@ struct HeatmapModel {
         var values: [Double] = []
         var lastMonth = -1
         var idCounter = 0
-        let monthFmt = DateFormatter(); monthFmt.dateFormat = "M月"
+        let monthFmt = DateFormatter(); monthFmt.dateFormat = tr("M月", "MMM")
 
         for w in 0..<weekCount {
             var col: [HeatCell] = []

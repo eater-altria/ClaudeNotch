@@ -40,9 +40,9 @@ enum HeatmapMetric: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .billable: return "Billable tokens"
-        case .cost: return "≈ 花费"
-        case .total: return "Total tokens"
+        case .billable: return tr("计费 token", "Billable tokens")
+        case .cost: return tr("≈ 花费", "≈ Cost")
+        case .total: return tr("总 token", "Total tokens")
         }
     }
 }
@@ -52,10 +52,10 @@ enum HistoryRange: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .m3: return "3 个月"
-        case .m6: return "6 个月"
-        case .m12: return "12 个月"
-        case .all: return "全部"
+        case .m3: return tr("3 个月", "3 mo")
+        case .m6: return tr("6 个月", "6 mo")
+        case .m12: return tr("12 个月", "12 mo")
+        case .all: return tr("全部", "All")
         }
     }
     /// 起始日期（nil = 全部，用最早数据）。

@@ -91,7 +91,7 @@ struct NotchRootView: View {
             Text(store.headlineText)
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(palette.text)
-            Text("剩余")
+            Text(tr("剩余", "left"))
                 .font(.system(size: 9.5))
                 .foregroundStyle(palette.text(0.5))
             if burning {
@@ -108,10 +108,10 @@ struct NotchRootView: View {
     }
 
     private func collapsedA11yLabel(_ h: UsageMetric?, _ proj: BurnProjection?) -> String {
-        guard let h else { return "Claude 额度：暂无数据" }
-        var s = "\(h.title)，剩余 \(h.percentRemaining)%"
-        if store.isStale { s += "，数据可能已过期" }
-        else if proj?.willRunOutBeforeReset == true { s += "，预计刷新前用尽" }
+        guard let h else { return tr("Claude 额度：暂无数据", "Claude usage: no data") }
+        var s = tr("\(h.title)，剩余 \(h.percentRemaining)%", "\(h.title), \(h.percentRemaining)% left")
+        if store.isStale { s += tr("，数据可能已过期", ", data may be stale") }
+        else if proj?.willRunOutBeforeReset == true { s += tr("，预计刷新前用尽", ", likely to run out before reset") }
         return s
     }
 
@@ -121,7 +121,7 @@ struct NotchRootView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text("Claude 额度")
+                    Text(tr("Claude 额度", "Claude Usage"))
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(palette.text)
                     Spacer()
@@ -134,7 +134,7 @@ struct NotchRootView: View {
                             .foregroundStyle(palette.text(0.7))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("立即刷新")
+                    .accessibilityLabel(tr("立即刷新", "Refresh now"))
                 }
                 if let snap = store.snapshot, let cost = snap.officialCostUSD {
                     HStack(spacing: 5) {
@@ -145,7 +145,7 @@ struct NotchRootView: View {
                             .lineLimit(1).minimumScaleFactor(0.8)
                     }
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(String(format: "最近会话官方花费 %.2f 美元", cost))
+                    .accessibilityLabel(tr("最近会话官方花费 \(money(cost))", "Latest session official cost \(money(cost))"))
                 }
             }
             .padding(.horizontal, 16)
@@ -177,7 +177,7 @@ struct NotchRootView: View {
         case .loading where store.snapshot == nil:
             HStack {
                 ProgressView().controlSize(.small)
-                Text("读取中…").foregroundStyle(palette.text(0.6)).font(.system(size: 12))
+                Text(tr("读取中…", "Loading…")).foregroundStyle(palette.text(0.6)).font(.system(size: 12))
             }
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 24)
@@ -199,13 +199,13 @@ struct NotchRootView: View {
                     extraRow(percent: ep, snap: snap)
                 }
             } else {
-                Text("暂无数据").foregroundStyle(palette.text(0.5)).font(.system(size: 12))
+                Text(tr("暂无数据", "No data")).foregroundStyle(palette.text(0.5)).font(.system(size: 12))
             }
         }
     }
 
     private func officialCostLine(_ snap: UsageSnapshot, _ cost: Double) -> String {
-        var s = String(format: "最近会话官方花费 $%.2f", cost)
+        var s = tr("最近会话官方花费 \(money(cost))", "Latest session official cost \(money(cost))")
         if let m = snap.modelName { s += " · \(m)" }
         return s
     }
@@ -220,11 +220,11 @@ struct NotchRootView: View {
             }
             .frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 1) {
-                Text("额外用量").font(.system(size: 11, weight: .medium)).foregroundStyle(palette.text(0.85))
+                Text(tr("额外用量", "Extra usage")).font(.system(size: 11, weight: .medium)).foregroundStyle(palette.text(0.85))
                 if let spent = snap.extraSpent {
-                    Text(String(format: "已花 %.2f", spent)
-                         + (snap.extraLimit.map { String(format: " / %.0f", $0) } ?? "")
-                         + (snap.extraBalance.map { String(format: " · 余 %.2f", $0) } ?? ""))
+                    Text(tr("已花 \(money(spent))", "Spent \(money(spent))")
+                         + (snap.extraLimit.map { " / \(money($0, decimals: 0))" } ?? "")
+                         + (snap.extraBalance.map { tr(" · 余 \(money($0))", " · \(money($0)) left") } ?? ""))
                         .font(.system(size: 10)).foregroundStyle(palette.text(0.5))
                 }
             }
@@ -240,11 +240,11 @@ struct NotchRootView: View {
         return VStack(spacing: 8) {
             Image(systemName: installed ? "terminal" : "link.badge.plus")
                 .font(.system(size: 18)).foregroundStyle(palette.text(0.6))
-            Text(installed ? "等待 Claude Code 额度数据" : "尚未接入 Claude Code")
+            Text(installed ? tr("等待 Claude Code 额度数据", "Waiting for Claude Code usage data") : tr("尚未接入 Claude Code", "Not connected to Claude Code"))
                 .font(.system(size: 13, weight: .medium)).foregroundStyle(palette.text)
             Text(installed
-                 ? "在任意终端跑一次 claude，额度会自动出现"
-                 : "去 设置 → 集成状态 重新接入，或在终端跑一次 claude")
+                 ? tr("在任意终端跑一次 claude，额度会自动出现", "Run claude once in any terminal and usage will appear")
+                 : tr("去 设置 → 集成状态 重新接入，或在终端跑一次 claude", "Go to Settings → Integration to reconnect, or run claude in a terminal"))
                 .font(.system(size: 11)).foregroundStyle(palette.text(0.5))
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
         }
@@ -258,7 +258,7 @@ struct NotchRootView: View {
             Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
             Text(msg).font(.system(size: 11)).foregroundStyle(palette.text(0.7))
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-            Button("重试", action: onRefresh).buttonStyle(.plain)
+            Button(tr("重试", "Retry"), action: onRefresh).buttonStyle(.plain)
                 .font(.system(size: 12)).foregroundStyle(palette.text)
                 .padding(.horizontal, 14).padding(.vertical, 5)
                 .background(Capsule().fill(palette.text(0.15)))
@@ -272,20 +272,20 @@ struct NotchRootView: View {
     private var sessionsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Text("活跃会话").font(.system(size: 11, weight: .semibold)).foregroundStyle(palette.text(0.85))
+                Text(tr("活跃会话", "Active sessions")).font(.system(size: 11, weight: .semibold)).foregroundStyle(palette.text(0.85))
                 Text("\(sessionStore.sessions.count)")
                     .font(.system(size: 9, weight: .semibold, design: .rounded))
                     .foregroundStyle(palette.text(0.7))
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Capsule().fill(palette.text(0.12)))
                 Spacer()
-                Text("≈ API 等价花费").font(.system(size: 8)).foregroundStyle(palette.text(0.32))
+                Text(tr("≈ API 等价花费", "≈ API-equivalent cost")).font(.system(size: 8)).foregroundStyle(palette.text(0.32))
             }
             if sessionStore.sessions.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("无运行中的会话")
+                    Text(tr("无运行中的会话", "No running sessions"))
                         .font(.system(size: 12)).foregroundStyle(palette.text(0.4))
-                    Text("仅列出正在终端运行的会话；额度仍会随 Claude Code 更新")
+                    Text(tr("仅列出正在终端运行的会话；额度仍会随 Claude Code 更新", "Only sessions running in a terminal are listed; usage still updates with Claude Code"))
                         .font(.system(size: 9.5)).foregroundStyle(palette.text(0.3))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -323,7 +323,7 @@ struct MetricRingTile: View {
                     Text("\(metric.percentRemaining)")
                         .font(.system(size: 17, weight: .bold, design: .rounded))
                         .foregroundStyle(palette.text)
-                    Text("剩%")
+                    Text(tr("剩%", "left%"))
                         .font(.system(size: 8, weight: .medium))
                         .foregroundStyle(palette.text(0.5))
                 }
@@ -361,8 +361,8 @@ struct MetricRingTile: View {
     }
 
     private var a11yValue: String {
-        var s = "剩余 \(metric.percentRemaining)%，已用 \(metric.percentUsed)%，\(metric.resetDisplay)刷新"
-        if let p = projection { s += "，\(p.display)" }
+        var s = tr("剩余 \(metric.percentRemaining)%，已用 \(metric.percentUsed)%，\(metric.resetDisplay)刷新", "\(metric.percentRemaining)% left, \(metric.percentUsed)% used, resets \(metric.resetDisplay)")
+        if let p = projection { s += tr("，\(p.display)", ", \(p.display)") }
         return s
     }
 }
@@ -416,7 +416,7 @@ struct SessionRowView: View {
             Spacer(minLength: 7)
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text(String(format: "≈$%.2f", session.costUSD))
+                Text(approxMoney(session.costUSD))
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(palette.text(0.85))
                 if session.jump != nil {
@@ -432,23 +432,23 @@ struct SessionRowView: View {
         .onHover { hovering = $0 }
         .onTapGesture { onTap() }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(session.projectName) 会话")
+        .accessibilityLabel(tr("\(session.projectName) 会话", "\(session.projectName) session"))
         .accessibilityValue(a11yValue)
         .accessibilityAddTraits(session.jump != nil ? .isButton : [])
-        .accessibilityHint(session.jump != nil ? "双击跳转到对应终端" : "")
+        .accessibilityHint(session.jump != nil ? tr("双击跳转到对应终端", "Double-tap to jump to the terminal") : "")
     }
 
     /// 副标题：模型 · 上下文占用（/ 窗口）；峰值明显高于当前时附「峰 Xk」。
     private var subtitle: String {
-        var s = "\(session.modelShort) · 上下文 \(formatTokens(session.contextTokens))/\(formatTokens(session.contextWindow))"
-        if session.hasMeaningfulPeak { s += " · 峰 \(formatTokens(session.peakContextTokens))" }
+        var s = tr("\(session.modelShort) · 上下文 \(formatTokens(session.contextTokens))/\(formatTokens(session.contextWindow))", "\(session.modelShort) · ctx \(formatTokens(session.contextTokens))/\(formatTokens(session.contextWindow))")
+        if session.hasMeaningfulPeak { s += tr(" · 峰 \(formatTokens(session.peakContextTokens))", " · peak \(formatTokens(session.peakContextTokens))") }
         return s
     }
 
     private var a11yValue: String {
-        var s = "\(session.modelShort)，上下文 \(session.contextPercent)%"
-        if session.hasMeaningfulPeak { s += "，峰值 \(session.peakContextPercent)%" }
-        s += String(format: "，约 %.2f 美元", session.costUSD)
+        var s = tr("\(session.modelShort)，上下文 \(session.contextPercent)%", "\(session.modelShort), context \(session.contextPercent)%")
+        if session.hasMeaningfulPeak { s += tr("，峰值 \(session.peakContextPercent)%", ", peak \(session.peakContextPercent)%") }
+        s += tr("，约 \(money(session.costUSD))", ", about \(money(session.costUSD))")
         return s
     }
 }

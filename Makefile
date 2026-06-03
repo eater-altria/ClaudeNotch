@@ -79,6 +79,7 @@ _assemble:
 	cp "$(BIN)" $(BUNDLE)/Contents/MacOS/$(APP_NAME)
 	cp Resources/AppIcon.icns $(BUNDLE)/Contents/Resources/AppIcon.icns
 	cp Resources/MenuBarIcon.png $(BUNDLE)/Contents/Resources/MenuBarIcon.png
+	cp Resources/litellm_prices.json $(BUNDLE)/Contents/Resources/litellm_prices.json
 	cp Resources/Info.plist $(BUNDLE)/Contents/Info.plist
 
 clean:

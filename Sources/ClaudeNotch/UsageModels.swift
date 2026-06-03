@@ -68,11 +68,11 @@ struct UsageMetric: Identifiable {
     /// 友好的刷新时间展示
     var resetDisplay: String {
         if let at = resetAt {
-            return Self.formatDuration(minutes: max(0, Int(at.timeIntervalSinceNow / 60))) + "后"
+            return Self.formatDuration(minutes: max(0, Int(at.timeIntervalSinceNow / 60))) + tr("后", " left")
         }
         guard let raw = resetRaw, !raw.isEmpty else { return "—" }
         if let mins = Self.parseRelativeMinutes(raw) {
-            return Self.formatDuration(minutes: mins) + "后"
+            return Self.formatDuration(minutes: mins) + tr("后", " left")
         }
         return raw   // 绝对时间（"Thu 11:00 AM"）直接显示
     }
@@ -86,16 +86,16 @@ struct UsageMetric: Identifiable {
     }
 
     static func formatDuration(minutes: Int) -> String {
-        if minutes <= 0 { return "即将" }
+        if minutes <= 0 { return tr("即将", "soon") }
         let h = minutes / 60
         let m = minutes % 60
         if h > 24 {
             let d = h / 24
-            return "\(d) 天"
+            return tr("\(d) 天", "\(d) day\(d == 1 ? "" : "s")")
         }
-        if h > 0 && m > 0 { return "\(h) 小时 \(m) 分" }
-        if h > 0 { return "\(h) 小时" }
-        return "\(m) 分钟"
+        if h > 0 && m > 0 { return tr("\(h) 小时 \(m) 分", "\(h) hr \(m) min") }
+        if h > 0 { return tr("\(h) 小时", "\(h) hr") }
+        return tr("\(m) 分钟", "\(m) min")
     }
 
     /// 极简时长（菜单栏药丸用）：72→"1h"，45→"45m"，1500→"1d"。
@@ -146,15 +146,15 @@ struct UsageSnapshot {
     init(from r: ScrapeResult, fetchedAt: Date) {
         self.fetchedAt = fetchedAt
         if let p = r.sessionPercent {
-            session = UsageMetric(id: "session", title: "当前会话",
+            session = UsageMetric(id: "session", title: tr("当前会话", "Current session"),
                                   percentUsed: p, resetRaw: r.sessionResetTime, resetAt: r.sessionResetAt)
         }
         if let p = r.weeklyAllModelsPercent {
-            weeklyAll = UsageMetric(id: "weeklyAll", title: "本周 · 全模型",
+            weeklyAll = UsageMetric(id: "weeklyAll", title: tr("本周 · 全模型", "Weekly · All models"),
                                     percentUsed: p, resetRaw: r.weeklyAllModelsReset, resetAt: r.weeklyAllModelsResetAt)
         }
         if let p = r.weeklySonnetPercent {
-            weeklySonnet = UsageMetric(id: "weeklySonnet", title: "本周 · Sonnet",
+            weeklySonnet = UsageMetric(id: "weeklySonnet", title: tr("本周 · Sonnet", "Weekly · Sonnet"),
                                        percentUsed: p, resetRaw: r.weeklySonnetReset, resetAt: r.weeklySonnetResetAt)
         }
         extraPercent = r.extraPercent
@@ -209,20 +209,20 @@ final class BurnEstimator {
 
     func project(currentUsed: Int, resetMinutesRemaining: Int?, now: Date) -> BurnProjection {
         guard currentUsed < 100 else {
-            return BurnProjection(minutesToEmpty: 0, willRunOutBeforeReset: true, display: "已用尽")
+            return BurnProjection(minutesToEmpty: 0, willRunOutBeforeReset: true, display: tr("已用尽", "Exhausted"))
         }
         guard let rate = ratePerMinute(), rate > 0 else {
             return BurnProjection(minutesToEmpty: nil, willRunOutBeforeReset: false,
-                                  display: samples.count < 2 ? "计算中…" : "无明显消耗")
+                                  display: samples.count < 2 ? tr("计算中…", "Calculating…") : tr("无明显消耗", "No notable usage"))
         }
         let remaining = Double(100 - currentUsed)
         let mins = Int((remaining / rate).rounded())
         if let resetMin = resetMinutesRemaining, mins >= resetMin {
             return BurnProjection(minutesToEmpty: mins, willRunOutBeforeReset: false,
-                                  display: "刷新前充足")
+                                  display: tr("刷新前充足", "Enough until reset"))
         }
         return BurnProjection(minutesToEmpty: mins, willRunOutBeforeReset: true,
-                              display: UsageMetric.formatDuration(minutes: mins) + "后用尽",
+                              display: UsageMetric.formatDuration(minutes: mins) + tr("后用尽", " to empty"),
                               emptyAt: now.addingTimeInterval(Double(mins) * 60))
     }
 }

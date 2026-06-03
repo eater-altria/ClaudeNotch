@@ -34,12 +34,12 @@ enum UpdateChecker {
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
             throw NSError(domain: "UpdateChecker", code: code,
-                          userInfo: [NSLocalizedDescriptionKey: "GitHub 返回错误（HTTP \(code)）"])
+                          userInfo: [NSLocalizedDescriptionKey: tr("GitHub 返回错误（HTTP \(code)）", "GitHub returned an error (HTTP \(code))")])
         }
         guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tag = obj["tag_name"] as? String else {
             throw NSError(domain: "UpdateChecker", code: -2,
-                          userInfo: [NSLocalizedDescriptionKey: "无法解析最新版本信息"])
+                          userInfo: [NSLocalizedDescriptionKey: tr("无法解析最新版本信息", "Failed to parse latest version info")])
         }
         let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
         let url = (obj["html_url"] as? String).flatMap { URL(string: $0) } ?? releasesPage
@@ -61,25 +61,25 @@ enum UpdateChecker {
     private static func presentResult(latest: Release) {
         let alert = NSAlert()
         if isOlder(currentVersion, than: latest.version) {
-            alert.messageText = "发现新版本 \(latest.tag)"
-            alert.informativeText = "当前版本 v\(currentVersion)。前往下载页升级？"
-            alert.addButton(withTitle: "前往下载")
-            alert.addButton(withTitle: "稍后")
+            alert.messageText = tr("发现新版本 \(latest.tag)", "New version available: \(latest.tag)")
+            alert.informativeText = tr("当前版本 v\(currentVersion)。前往下载页升级？", "Current version v\(currentVersion). Go to the download page to upgrade?")
+            alert.addButton(withTitle: tr("前往下载", "Download"))
+            alert.addButton(withTitle: tr("稍后", "Later"))
             run(alert) { if $0 == .alertFirstButtonReturn { NSWorkspace.shared.open(latest.url) } }
         } else {
-            alert.messageText = "已是最新版本"
-            alert.informativeText = "当前 v\(currentVersion) 已是最新。"
-            alert.addButton(withTitle: "好")
+            alert.messageText = tr("已是最新版本", "You're up to date")
+            alert.informativeText = tr("当前 v\(currentVersion) 已是最新。", "v\(currentVersion) is the latest version.")
+            alert.addButton(withTitle: tr("好", "OK"))
             run(alert) { _ in }
         }
     }
 
     private static func presentError(_ error: Error) {
         let alert = NSAlert()
-        alert.messageText = "检查更新失败"
+        alert.messageText = tr("检查更新失败", "Update check failed")
         alert.informativeText = error.localizedDescription
-        alert.addButton(withTitle: "好")
-        alert.addButton(withTitle: "打开发布页")
+        alert.addButton(withTitle: tr("好", "OK"))
+        alert.addButton(withTitle: tr("打开发布页", "Open releases page"))
         run(alert) { if $0 == .alertSecondButtonReturn { NSWorkspace.shared.open(releasesPage) } }
     }
 

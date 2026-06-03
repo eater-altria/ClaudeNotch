@@ -222,19 +222,19 @@ enum StatuslineHook {
 
         /// 可一键复制、贴进 issue 的纯文本快照。
         var copyText: String {
-            var L: [String] = ["ClaudeNotch 集成诊断"]
-            L.append("已接入: \(installed ? "是" : "否")")
-            L.append("statusLine 命令: \(command ?? "（无）")")
-            L.append("透传的原命令: \(wrappedInner ?? "（无）")")
-            L.append("ratelimits.json: \(ratelimitsExists ? "存在" : "缺失")")
+            var L: [String] = [tr("ClaudeNotch 集成诊断", "ClaudeNotch integration diagnostics")]
+            L.append(tr("已接入: ", "Installed: ") + (installed ? tr("是", "Yes") : tr("否", "No")))
+            L.append(tr("statusLine 命令: ", "statusLine command: ") + (command ?? tr("（无）", "(none)")))
+            L.append(tr("透传的原命令: ", "Wrapped original command: ") + (wrappedInner ?? tr("（无）", "(none)")))
+            L.append(tr("ratelimits.json: ", "ratelimits.json: ") + (ratelimitsExists ? tr("存在", "present") : tr("缺失", "missing")))
             if let c = capturedAt {
                 let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                L.append("上次额度数据: \(f.string(from: c))")
+                L.append(tr("上次额度数据: ", "Last usage data: ") + f.string(from: c))
             } else {
-                L.append("上次额度数据: 尚无")
+                L.append(tr("上次额度数据: 尚无", "Last usage data: none yet"))
             }
-            L.append("settings.json: \(settingsPath)")
-            L.append("支持目录: \(supportDirPath)")
+            L.append(tr("settings.json: ", "settings.json: ") + settingsPath)
+            L.append(tr("支持目录: ", "Support directory: ") + supportDirPath)
             return L.joined(separator: "\n")
         }
     }

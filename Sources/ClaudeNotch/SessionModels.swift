@@ -70,7 +70,13 @@ struct ModelPricing {
     let cacheWrite1h: Double
     let window: Int
 
+    /// 优先用 LiteLLM 在线价表（真实单价，含第三方子代理模型）；未命中再退回本地按族近似。
     static func lookup(_ model: String) -> ModelPricing {
+        PriceCatalog.shared.match(model) ?? fallback(model)
+    }
+
+    /// 本地硬编码兜底（无网络 / 价表未命中时用）。Claude 三族与 LiteLLM 一致，未知模型按 Sonnet 近似。
+    static func fallback(_ model: String) -> ModelPricing {
         let m = model.lowercased()
         if m.contains("opus") {
             // Opus 4.x（4.5 起降价）：$5 / $25，cache read $0.5，5m 写 $6.25，1h 写 $10
@@ -84,6 +90,9 @@ struct ModelPricing {
         }
         return ModelPricing(input: 3, output: 15, cacheRead: 0.30, cacheWrite5m: 3.75, cacheWrite1h: 6, window: 200_000)
     }
+
+    /// 按模型族给的默认上下文窗口（仅供价表构建时取窗口；与 `fallback` 同口径）。
+    static func fallbackWindow(_ model: String) -> Int { fallback(model).window }
 }
 
 /// 上下文占用配色：越满越警示（与“剩余容量”相反）。

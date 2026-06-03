@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let sessionStore = SessionStore()
     private let settings = SettingsStore()
     private let historyStore = UsageHistoryStore()
+    private let priceStore = ModelPriceStore()
+    private let rateStore = ExchangeRateStore()
     private var notchManager: NotchManager!
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
@@ -55,6 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         store.start()
         sessionStore.start()
+        priceStore.bootstrap()        // 装载 LiteLLM 价表（内置快照即时 + 后台每周刷新）
+        rateStore.bootstrap()         // 汇率（缓存/默认即时 + 后台每周刷新）
 
         // 即使无新事件，也每分钟刷新一次药丸——好让数据过期 30 分钟后能自动调暗。
         staleTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
@@ -98,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             },
             onSkip: { [weak self] in self?.onboardingWindow?.close() })
         let win = NSWindow(contentViewController: NSHostingController(rootView: view))
-        win.title = "欢迎使用 ClaudeNotch"
+        win.title = tr("欢迎使用 ClaudeNotch", "Welcome to ClaudeNotch")
         win.styleMask = [.titled, .closable]
         win.isReleasedWhenClosed = false
         win.delegate = self
@@ -135,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let image = Bundle.main.image(forResource: "MenuBarIcon")
         image?.isTemplate = true
         image?.size = NSSize(width: 18, height: 18)
-        image?.accessibilityDescription = "Claude 额度"
+        image?.accessibilityDescription = tr("Claude 额度", "Claude usage")
         return image
     }
 
@@ -149,25 +153,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         guard let button = statusItem.button else { return }
         guard let h = store.snapshot?.headline else {
             button.attributedTitle = NSAttributedString(string: "")
-            button.setAccessibilityLabel("Claude 额度")
+            button.setAccessibilityLabel(tr("Claude 额度", "Claude usage"))
             return
         }
         let stale = store.isStale
         var text = " \(h.percentRemaining)%"
-        var a11y = "\(h.title)，剩余 \(h.percentRemaining)%"
+        var a11y = tr("\(h.title)，剩余 \(h.percentRemaining)%", "\(h.title), \(h.percentRemaining)% remaining")
         // 即将在刷新前用尽：药丸追加 ⚡ + 极简时长（数据过期则不显示，避免误导）。
         // 用投影记录的「耗尽时刻」实时倒推，使 60s tick 真正把药丸读数往下减，而非重印冻结值。
         if !stale, let proj = store.liveProjection(for: h.id), proj.willRunOutBeforeReset {
             let remaining = proj.emptyAt.map { Int($0.timeIntervalSinceNow / 60) } ?? proj.minutesToEmpty
             if let r = remaining, r > 0 {
                 text += " ⚡\(UsageMetric.shortDuration(minutes: r))"
-                a11y += "，预计 \(UsageMetric.formatDuration(minutes: r))后用尽"
+                a11y += tr("，预计 \(UsageMetric.formatDuration(minutes: r))后用尽", ", running out in about \(UsageMetric.formatDuration(minutes: r))")
             } else {
                 text += " ⚡"
-                a11y += "，即将用尽"
+                a11y += tr("，即将用尽", ", running out soon")
             }
         }
-        if stale { a11y += "，数据可能已过期" }
+        if stale { a11y += tr("，数据可能已过期", ", data may be stale") }
         // 过期时用次级文字色（变灰），提示数据不新鲜。
         let color: NSColor = stale ? .secondaryLabelColor : .labelColor
         button.attributedTitle = NSAttributedString(string: text, attributes: [
@@ -182,13 +186,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        menu.addItem(withTitle: "设置…", action: #selector(openSettings), keyEquivalent: ",").target = self
-        menu.addItem(withTitle: "数据统计…", action: #selector(openAnalytics), keyEquivalent: "d").target = self
-        menu.addItem(withTitle: "立即刷新", action: #selector(refreshAction), keyEquivalent: "r").target = self
-        menu.addItem(withTitle: "检查更新…", action: #selector(checkUpdateAction), keyEquivalent: "").target = self
+        menu.addItem(withTitle: tr("设置…", "Settings…"), action: #selector(openSettings), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: tr("数据统计…", "Analytics…"), action: #selector(openAnalytics), keyEquivalent: "d").target = self
+        menu.addItem(withTitle: tr("立即刷新", "Refresh Now"), action: #selector(refreshAction), keyEquivalent: "r").target = self
+        menu.addItem(withTitle: tr("检查更新…", "Check for Updates…"), action: #selector(checkUpdateAction), keyEquivalent: "").target = self
 
         menu.addItem(.separator())
-        menu.addItem(withTitle: "退出", action: #selector(quitAction), keyEquivalent: "q").target = self
+        menu.addItem(withTitle: tr("退出", "Quit"), action: #selector(quitAction), keyEquivalent: "q").target = self
     }
 
     @objc private func refreshAction() {
@@ -202,7 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if analyticsWindow == nil {
             let hosting = NSHostingController(rootView: AnalyticsView(store: historyStore, hover: HoverModel()))
             let win = NSWindow(contentViewController: hosting)
-            win.title = "ClaudeNotch 数据统计"
+            win.title = tr("ClaudeNotch 数据统计", "ClaudeNotch Analytics")
             win.styleMask = [.titled, .closable, .resizable, .miniaturizable]
             win.isReleasedWhenClosed = false
             win.delegate = self
@@ -220,9 +224,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     @objc private func openSettings() {
         if settingsWindow == nil {
-            let hosting = NSHostingController(rootView: SettingsView(settings: settings))
+            let hosting = NSHostingController(rootView: SettingsView(settings: settings, priceStore: priceStore, rateStore: rateStore))
             let win = NSWindow(contentViewController: hosting)
-            win.title = "ClaudeNotch 设置"
+            win.title = tr("ClaudeNotch 设置", "ClaudeNotch Settings")
             win.styleMask = [.titled, .closable]
             win.isReleasedWhenClosed = false
             win.delegate = self
