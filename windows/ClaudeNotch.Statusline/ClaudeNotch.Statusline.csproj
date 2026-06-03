@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    专用 statusLine 助手：控制台子系统（stdin 可靠）+ NativeAOT（极小、秒启、无运行时依赖）。
+    Claude Code 每次渲染状态栏都会调它喂 rate_limits（JSON via stdin），它落盘 ratelimits.json 并透传原命令。
+    主 WPF exe 是 GUI 子系统 + 自包含单文件，作为高频 stdin 钩子不可靠，故拆出本助手。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>ClaudeNotch.Statusline</AssemblyName>
+    <RootNamespace>ClaudeNotch.Statusline</RootNamespace>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <Version>1.5.0</Version>
+  </PropertyGroup>
+
+</Project>

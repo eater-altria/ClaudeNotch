@@ -43,6 +43,9 @@ jobs:
           -p:IncludeNativeLibrariesForSelfExtract=true
           -o publish
 
+      - name: Publish statusLine helper (NativeAOT console, into same folder)
+        run: dotnet publish ClaudeNotch.Statusline/ClaudeNotch.Statusline.csproj -c Release -r win-x64 -o publish
+
       - name: Zip
         shell: pwsh
         run: Compress-Archive -Path publish/* -DestinationPath ClaudeNotch-windows-x64.zip -Force

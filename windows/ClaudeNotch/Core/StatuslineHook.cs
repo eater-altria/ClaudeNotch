@@ -14,7 +14,15 @@ public static class StatuslineHook
 {
     const string OwnerMarker = "_claudenotch";
 
-    static bool IsOurs(string command) => command.Contains("--statusline") && command.Contains("ClaudeNotch");
+    static bool IsOurs(string command) =>
+        command.Contains("ClaudeNotch.Statusline") || (command.Contains("--statusline") && command.Contains("ClaudeNotch"));
+
+    /// <summary>注册用的 statusLine 命令：优先专用助手 exe，缺失时退回主 exe --statusline。</summary>
+    static string HookCommand()
+    {
+        var helper = Paths.StatuslineHelperExe;
+        return File.Exists(helper) ? $"\"{helper}\"" : $"\"{Paths.ExePath}\" --statusline";
+    }
 
     static bool ObjectIsOurs(JsonObject sl)
     {
@@ -121,8 +129,11 @@ public static class StatuslineHook
 
     public static void EnsureInstalled()
     {
-        var bin = Paths.ExePath;
-        if (IsInstalled && (CurrentCommand()?.Contains(bin) ?? false)) return;
+        // 已安装且命令仍指向当前助手/主程序所在目录则跳过；否则（被移动/换构建/跨机同步）重装。
+        var helper = Paths.StatuslineHelperExe;
+        var current = CurrentCommand();
+        bool pointsHere = current is not null && (current.Contains(helper) || current.Contains(Paths.ExePath));
+        if (IsInstalled && pointsHere) return;
         Install();
     }
 
@@ -140,7 +151,6 @@ public static class StatuslineHook
     public static void Install()
     {
         try { Directory.CreateDirectory(Paths.SupportDir); } catch { }
-        var bin = Paths.ExePath;
 
         JsonObject settings = new();
         if (File.Exists(Paths.ClaudeSettings))
@@ -163,7 +173,7 @@ public static class StatuslineHook
         settings["statusLine"] = new JsonObject
         {
             ["type"] = "command",
-            ["command"] = $"\"{bin}\" --statusline",
+            ["command"] = HookCommand(),
             ["padding"] = 0,
             [OwnerMarker] = true,
         };

@@ -31,6 +31,16 @@ public static class Paths
     public static string ExePath =>
         Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName ?? "ClaudeNotch.exe";
 
+    /// <summary>专用 statusLine 助手 exe（与主 exe 同目录；高频 stdin 钩子用它，而非重型 WPF 主程序）。</summary>
+    public static string StatuslineHelperExe
+    {
+        get
+        {
+            var dir = Path.GetDirectoryName(ExePath);
+            return dir is null ? "ClaudeNotch.Statusline.exe" : Path.Combine(dir, "ClaudeNotch.Statusline.exe");
+        }
+    }
+
     /// <summary>内置 LiteLLM 价表快照（与可执行文件同目录）。</summary>
     public static string BundledLiteLLM =>
         Path.Combine(AppContext.BaseDirectory, "Assets", "litellm_prices.json");
