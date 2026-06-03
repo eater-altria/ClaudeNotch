@@ -17,11 +17,18 @@ public static class StatuslineHook
     static bool IsOurs(string command) =>
         command.Contains("ClaudeNotch.Statusline") || (command.Contains("--statusline") && command.Contains("ClaudeNotch"));
 
-    /// <summary>注册用的 statusLine 命令：优先专用助手 exe，缺失时退回主 exe --statusline。</summary>
+    /// <summary>
+    /// 注册用的 statusLine 命令：优先专用助手 exe，缺失时退回主 exe --statusline。
+    /// Claude Code 在 Windows 用 **PowerShell** 执行 statusLine：**带引号的裸字符串只会被回显、不执行**，
+    /// 故用「裸正斜杠路径」(PowerShell 会当命令执行；正斜杠在 PS/cmd/bash 都不被转义)。
+    /// 路径含空格时用调用运算符 `& '...'`（PowerShell 下对带空格路径有效）。
+    /// </summary>
     static string HookCommand()
     {
-        var helper = Paths.StatuslineHelperExe;
-        return File.Exists(helper) ? $"\"{helper}\"" : $"\"{Paths.ExePath}\" --statusline";
+        bool helperExists = File.Exists(Paths.StatuslineHelperExe);
+        var exe = (helperExists ? Paths.StatuslineHelperExe : Paths.ExePath).Replace('\\', '/');
+        var args = helperExists ? "" : " --statusline";
+        return exe.Contains(' ') ? $"& '{exe}'{args}" : $"{exe}{args}";
     }
 
     static bool ObjectIsOurs(JsonObject sl)
@@ -129,13 +136,12 @@ public static class StatuslineHook
 
     public static void EnsureInstalled()
     {
-        // 已安装且命令已指向“当前应注册的命令”才跳过；否则重装。
-        // 关键：有专用助手时必须指向助手——否则旧版(主 exe --statusline)升级后不会切换到助手。
-        var helper = Paths.StatuslineHelperExe;
-        var current = CurrentCommand();
-        bool ok = current is not null &&
-                  (File.Exists(helper) ? current.Contains(helper) : current.Contains(Paths.ExePath));
-        if (IsInstalled && ok) return;
+        // 已安装且命令已指向“当前应注册的可执行文件”才跳过；否则重装。
+        // 按正斜杠归一化比较（注册命令现用正斜杠裸路径），避免反斜杠/正斜杠差异导致每次启动都重写。
+        bool helperExists = File.Exists(Paths.StatuslineHelperExe);
+        var target = (helperExists ? Paths.StatuslineHelperExe : Paths.ExePath).Replace('\\', '/');
+        var current = CurrentCommand()?.Replace('\\', '/');
+        if (IsInstalled && current is not null && current.Contains(target)) return;
         Install();
     }
 

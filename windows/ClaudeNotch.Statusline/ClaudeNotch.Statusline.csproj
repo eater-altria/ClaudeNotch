@@ -15,7 +15,7 @@
     <RootNamespace>ClaudeNotch.Statusline</RootNamespace>
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <Version>1.5.0</Version>
+    <Version>1.5.1</Version>
   </PropertyGroup>
 
 </Project>
