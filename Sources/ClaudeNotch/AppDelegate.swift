@@ -10,7 +10,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var notchManager: NotchManager!
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
+    private var onboardingWindow: NSWindow?
     private var cancellable: Any?
+    private var staleTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)   // 无 Dock 图标
@@ -23,12 +25,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             })
         settings.onIslandEnabledChange = { [weak self] on in self?.notchManager.setEnabled(on) }
         settings.onDisplaySettingsChange = { [weak self] in self?.notchManager.rebuild() }
+        settings.onNotificationConfigChange = { [weak self] in self?.applyNotificationConfig() }
+        settings.onManageStatuslineChange = { [weak self] on in
+            guard let self else { return }
+            if on { self.ensureStatuslineIfAllowed() }
+            else { StatuslineHook.uninstall(purgeData: false) }
+        }
         notchManager.rebuild()
 
-        // 唯一额度来源：自动把本 app 注册为 Claude Code 的 statusLine 钩子（幂等，路径变化时自愈）。
-        StatuslineHook.ensureInstalled()
-
         NotificationManager.shared.setEnabled(settings.notificationsEnabled)
+        applyNotificationConfig()
+
+        // 额度来源：首次运行先取得知情同意，再接管 Claude Code 的 statusLine。
+        if StatuslineHook.isInstalled {
+            // 已在用 = 视为已同意（老用户无感升级，不弹引导）。
+            settings.statuslineConsented = true
+            settings.didOnboard = true
+        }
+        if settings.didOnboard {
+            ensureStatuslineIfAllowed()
+        } else {
+            presentOnboarding()
+        }
 
         setupStatusItem()
         observeStore()
@@ -36,9 +54,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         store.start()
         sessionStore.start()
 
+        // 即使无新事件，也每分钟刷新一次药丸——好让数据过期 30 分钟后能自动调暗。
+        staleTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async { self?.updateStatusTitle() }
+        }
+
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
+    }
+
+    /// 把通知阈值 / 声音设置回写到额度与会话两个 store。
+    private func applyNotificationConfig() {
+        // 容错：无论两档设成什么，较高者恒为「严重档（出声）」、较低者为「提示档（静默）」，
+        // 保证总存在一个静默档，即便 UI 约束被绕过也不会让 80% 这类提示档意外出声。
+        let crit = max(settings.quotaWarnThreshold, settings.quotaCriticalThreshold)
+        let warn = min(settings.quotaWarnThreshold, settings.quotaCriticalThreshold)
+        store.quotaThresholds = crit == warn ? [crit] : [crit, warn]
+        store.quotaCriticalBand = crit
+        store.criticalSoundEnabled = settings.criticalSoundEnabled
+        sessionStore.contextThreshold = settings.contextThreshold
+        sessionStore.criticalSoundEnabled = settings.criticalSoundEnabled
+    }
+
+    /// 仅在已同意且未暂停接管时，幂等接入 statusLine。
+    private func ensureStatuslineIfAllowed() {
+        if settings.statuslineConsented && settings.manageStatusline {
+            StatuslineHook.ensureInstalled()
+        }
+    }
+
+    private func presentOnboarding() {
+        let existing = StatuslineHook.diagnostics().command   // 接管前的现有命令（通常为 nil 或用户自己的）
+        let view = OnboardingView(
+            existingCommand: existing,
+            onContinue: { [weak self] in
+                guard let self else { return }
+                self.settings.statuslineConsented = true
+                self.ensureStatuslineIfAllowed()
+                self.onboardingWindow?.close()
+            },
+            onSkip: { [weak self] in self?.onboardingWindow?.close() })
+        let win = NSWindow(contentViewController: NSHostingController(rootView: view))
+        win.title = "欢迎使用 ClaudeNotch"
+        win.styleMask = [.titled, .closable]
+        win.isReleasedWhenClosed = false
+        win.delegate = self
+        win.center()
+        onboardingWindow = win
+        NSApp.setActivationPolicy(.regular)
+        win.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -79,16 +145,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func updateStatusTitle() {
         guard let button = statusItem.button else { return }
-        switch store.state {
-        case .ready:
-            if let h = store.snapshot?.headline {
-                button.title = " \(h.percentRemaining)%"
-            } else {
-                button.title = ""
-            }
-        default:
-            button.title = ""
+        guard let h = store.snapshot?.headline else {
+            button.attributedTitle = NSAttributedString(string: "")
+            button.setAccessibilityLabel("Claude 额度")
+            return
         }
+        let stale = store.isStale
+        var text = " \(h.percentRemaining)%"
+        var a11y = "\(h.title)，剩余 \(h.percentRemaining)%"
+        // 即将在刷新前用尽：药丸追加 ⚡ + 极简时长（数据过期则不显示，避免误导）。
+        // 用投影记录的「耗尽时刻」实时倒推，使 60s tick 真正把药丸读数往下减，而非重印冻结值。
+        if !stale, let proj = store.liveProjection(for: h.id), proj.willRunOutBeforeReset {
+            let remaining = proj.emptyAt.map { Int($0.timeIntervalSinceNow / 60) } ?? proj.minutesToEmpty
+            if let r = remaining, r > 0 {
+                text += " ⚡\(UsageMetric.shortDuration(minutes: r))"
+                a11y += "，预计 \(UsageMetric.formatDuration(minutes: r))后用尽"
+            } else {
+                text += " ⚡"
+                a11y += "，即将用尽"
+            }
+        }
+        if stale { a11y += "，数据可能已过期" }
+        // 过期时用次级文字色（变灰），提示数据不新鲜。
+        let color: NSColor = stale ? .secondaryLabelColor : .labelColor
+        button.attributedTitle = NSAttributedString(string: text, attributes: [
+            .foregroundColor: color,
+            .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+        ])
+        button.setAccessibilityLabel(a11y)
     }
 
     // MARK: - 动态菜单
@@ -98,6 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         menu.addItem(withTitle: "设置…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "立即刷新", action: #selector(refreshAction), keyEquivalent: "r").target = self
+        menu.addItem(withTitle: "检查更新…", action: #selector(checkUpdateAction), keyEquivalent: "").target = self
 
         menu.addItem(.separator())
         menu.addItem(withTitle: "退出", action: #selector(quitAction), keyEquivalent: "q").target = self
@@ -107,6 +192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         Task { await store.refresh() }
         sessionStore.refresh()
     }
+    @objc private func checkUpdateAction() { UpdateChecker.checkInteractively() }
     @objc private func quitAction() { NSApp.terminate(nil) }
 
     @objc private func openSettings() {
@@ -126,7 +212,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     func windowWillClose(_ notification: Notification) {
-        if (notification.object as? NSWindow) === settingsWindow {
+        let w = notification.object as? NSWindow
+        if w === onboardingWindow {
+            settings.didOnboard = true        // 关掉引导（含直接点 X）即视为已做过一次选择，不再每次弹
+            onboardingWindow = nil
+        }
+        // 仅当不再有任何前台窗口时，才退回无 Dock 图标的 accessory 策略。
+        if settingsWindow == nil && onboardingWindow == nil {
             NSApp.setActivationPolicy(.accessory)
         }
     }

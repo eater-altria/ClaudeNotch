@@ -45,6 +45,14 @@ struct StatuslineProvider: UsageProvider {
         if let w = window("seven_day") { r.weeklyAllModelsPercent = w.percent; r.weeklyAllModelsResetAt = w.resetAt }
         if let so = window("seven_day_sonnet") { r.weeklySonnetPercent = so.percent; r.weeklySonnetResetAt = so.resetAt }
 
+        // Claude Code 自己算的官方字段（钩子已一并落盘）。
+        if let cost = obj["cost"] as? [String: Any],
+           let c = (cost["total_cost_usd"] as? NSNumber)?.doubleValue { r.officialCostUSD = c }
+        if let model = obj["model"] as? [String: Any] {
+            r.modelName = (model["display_name"] as? String) ?? (model["id"] as? String)
+        }
+        r.cliVersion = obj["version"] as? String
+
         guard r.sessionPercent != nil || r.weeklyAllModelsPercent != nil else {
             return .failure("状态栏数据暂无额度字段")
         }

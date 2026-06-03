@@ -21,12 +21,13 @@ final class NotificationManager {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    func notify(id: String, title: String, body: String) {
+    /// `sound=false` 用于「提示档」（如额度 80%）静默送达；`true` 用于「严重档」（95% / 上下文将满）出声。
+    func notify(id: String, title: String, body: String, sound: Bool = true) {
         guard enabled, hasBundle else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = .default
+        if sound { content.sound = .default }
         let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }

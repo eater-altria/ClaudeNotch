@@ -200,7 +200,8 @@ final class SessionScanner {
             id: main.sid.isEmpty ? file.lastPathComponent : main.sid,
             projectName: name, cwd: main.cwd, gitBranch: cleanBranch,
             model: main.lastModel, costUSD: main.cost + subCost,
-            contextTokens: main.lastCtx, contextWindow: window, lastActivity: mtime
+            contextTokens: main.lastCtx, peakContextTokens: main.peakCtx,
+            contextWindow: window, lastActivity: mtime
         )
     }
 }
@@ -235,20 +236,25 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    // 上下文告警：某会话上下文 ≥90% 提醒一次（建议 /compact）；回落后可再次提醒。
+    // 上下文告警：某会话上下文 ≥阈值 提醒一次（建议 /compact）；回落后可再次提醒。
+    // 阈值与是否出声由设置驱动（AppDelegate 在设置变化时回写）。
+    var contextThreshold: Int = 90
+    var criticalSoundEnabled: Bool = true
     private var notifiedContext: Set<String> = []
 
     private func checkContextNotifications(_ sessions: [SessionInfo]) {
-        for s in sessions where s.contextPercent >= 90 && !notifiedContext.contains(s.id) {
+        let threshold = contextThreshold
+        for s in sessions where s.contextPercent >= threshold && !notifiedContext.contains(s.id) {
             notifiedContext.insert(s.id)
             NotificationManager.shared.notify(
                 id: "ctx-\(s.id)",
                 title: "上下文将满",
-                body: "\(s.projectName) 上下文已用 \(s.contextPercent)%，建议 /compact 或新开会话")
+                body: "\(s.projectName) 上下文已用 \(s.contextPercent)%，建议 /compact 或新开会话",
+                sound: criticalSoundEnabled)
         }
-        // 只在"本次扫描确实出现、且已回落到 <90"时解除标记。
+        // 只在"本次扫描确实出现、且已回落到 <阈值"时解除标记。
         // 会话短暂从扫描中消失（非真正结束）不解除，避免重现时重复轰炸。
-        for s in sessions where s.contextPercent < 90 {
+        for s in sessions where s.contextPercent < threshold {
             notifiedContext.remove(s.id)
         }
     }

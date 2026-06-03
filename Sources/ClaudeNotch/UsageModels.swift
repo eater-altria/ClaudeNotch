@@ -20,6 +20,10 @@ struct ScrapeResult: Codable {
     var extraBalance: Double?
     var extraPercent: Int?
     var extraReset: String?
+    // Claude Code 自己算的「官方」字段（statusline stdin 直接给的，权威、非折算）。
+    var officialCostUSD: Double?   // cost.total_cost_usd——最近渲染状态栏那个会话的真实花费
+    var modelName: String?         // model.display_name，如 "Opus 4.8"
+    var cliVersion: String?        // Claude Code 版本
 }
 
 // MARK: - 颜色阈值
@@ -94,6 +98,15 @@ struct UsageMetric: Identifiable {
         return "\(m) 分钟"
     }
 
+    /// 极简时长（菜单栏药丸用）：72→"1h"，45→"45m"，1500→"1d"。
+    static func shortDuration(minutes: Int) -> String {
+        if minutes <= 0 { return "0m" }
+        let h = minutes / 60
+        if h >= 24 { return "\(h / 24)d" }
+        if h > 0 { return "\(h)h" }
+        return "\(minutes)m"
+    }
+
     private static func firstInt(in text: String, pattern: String) -> Int? {
         guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
         let range = NSRange(text.startIndex..., in: text)
@@ -114,6 +127,9 @@ struct UsageSnapshot {
     var extraLimit: Double?
     var extraBalance: Double?
     var extraReset: String?
+    var officialCostUSD: Double?
+    var modelName: String?
+    var cliVersion: String?
     var fetchedAt: Date
 
     /// 折叠态主指标：优先展示“当前会话”，否则取已用最高的周指标
@@ -146,6 +162,9 @@ struct UsageSnapshot {
         extraLimit = r.extraLimit
         extraBalance = r.extraBalance
         extraReset = r.extraReset
+        officialCostUSD = r.officialCostUSD
+        modelName = r.modelName
+        cliVersion = r.cliVersion
     }
 }
 
@@ -158,6 +177,9 @@ struct BurnProjection {
     let willRunOutBeforeReset: Bool
     /// 文案
     let display: String
+    /// 预计耗尽的绝对时刻（投影时 = now + minutesToEmpty）。供常驻药丸实时倒推，
+    /// 避免每 60s tick 重复打印同一个冻结的旧分钟数。
+    var emptyAt: Date? = nil
 }
 
 /// 维护某个指标的历史采样，估算消耗速率
@@ -200,6 +222,7 @@ final class BurnEstimator {
                                   display: "刷新前充足")
         }
         return BurnProjection(minutesToEmpty: mins, willRunOutBeforeReset: true,
-                              display: UsageMetric.formatDuration(minutes: mins) + "后用尽")
+                              display: UsageMetric.formatDuration(minutes: mins) + "后用尽",
+                              emptyAt: now.addingTimeInterval(Double(mins) * 60))
     }
 }

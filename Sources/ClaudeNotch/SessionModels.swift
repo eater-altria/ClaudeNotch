@@ -23,6 +23,7 @@ struct SessionInfo: Identifiable {
     let model: String
     let costUSD: Double          // 按 API 单价折算的等价花费（订阅用户并不按此单独计费）
     let contextTokens: Int       // 当前上下文占用（最近一次请求的总输入）
+    let peakContextTokens: Int   // 本会话历史峰值上下文（看离溢出多近 / compact 是否生效）
     let contextWindow: Int       // 上下文窗口（环形图分母）
     let lastActivity: Date
     var jump: JumpTarget? = nil  // 跳转目标（由进程匹配后附加）
@@ -31,6 +32,15 @@ struct SessionInfo: Identifiable {
         guard contextWindow > 0 else { return 0 }
         return max(0, min(100, Int((Double(contextTokens) / Double(contextWindow) * 100).rounded())))
     }
+
+    /// 峰值上下文占比（环形上的峰值刻度用）。
+    var peakContextPercent: Int {
+        guard contextWindow > 0 else { return 0 }
+        return max(0, min(100, Int((Double(peakContextTokens) / Double(contextWindow) * 100).rounded())))
+    }
+
+    /// 峰值是否明显高于当前（如 /compact 后回落）——决定是否值得单独展示「峰」。
+    var hasMeaningfulPeak: Bool { peakContextTokens > contextTokens }
 
     /// 模型短名：claude-opus-4-8 -> Opus 4.8
     var modelShort: String {

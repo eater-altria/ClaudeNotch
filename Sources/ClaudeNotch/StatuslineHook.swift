@@ -39,6 +39,14 @@ enum StatuslineHook {
         command.contains("--statusline") && command.contains("ClaudeNotch")
     }
 
+    /// statusLine 对象是否属于本 app：优先认我们写入的 sentinel 键（精确、不会和用户命令子串撞车），
+    /// 回退到命令子串匹配（兼容老版本写入的、没有 sentinel 的命令，便于平滑迁移）。
+    private static func objectIsOurs(_ sl: [String: Any]) -> Bool {
+        if sl[ownerMarkerKey] as? Bool == true { return true }
+        return isOurs(sl["command"] as? String ?? "")
+    }
+    private static let ownerMarkerKey = "_claudenotch"
+
     // MARK: - 作为 statusLine 命令运行（main.swift 检测到 --statusline 时调用）
 
     /// 读 stdin、落盘额度、透传原 statusline。必须快进快出，不启动任何 GUI。
@@ -47,7 +55,7 @@ enum StatuslineHook {
         let root = (try? JSONSerialization.jsonObject(with: input)) as? [String: Any]
         let rateLimits = root?["rate_limits"] as? [String: Any]
 
-        if let rl = rateLimits { persist(rateLimits: rl) }
+        if let rl = rateLimits { persist(rateLimits: rl, root: root) }
 
         // 透传：有原命令就转发同一份 stdin 并原样输出其状态栏；否则打印一行简洁默认。
         if let inner = innerCommand() {
@@ -57,11 +65,18 @@ enum StatuslineHook {
         }
     }
 
-    private static func persist(rateLimits: [String: Any]) {
-        let payload: [String: Any] = [
+    private static func persist(rateLimits: [String: Any], root: [String: Any]?) {
+        var payload: [String: Any] = [
             "capturedAt": Date().timeIntervalSince1970,
             "rate_limits": rateLimits,
         ]
+        // Claude Code 自己已经算好的官方字段，原样留存（权威花费 + 模型 + 版本 + 工作区）。
+        // 只挑值类型，避免把闭包/不可序列化对象塞进 JSON。
+        if let root {
+            for key in ["cost", "model", "version", "workspace", "output_style", "session_id"] {
+                if let v = root[key], JSONSerialization.isValidJSONObject([v]) { payload[key] = v }
+            }
+        }
         try? FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
         if let data = try? JSONSerialization.data(withJSONObject: payload) {
             try? data.write(to: ratelimitsFile, options: .atomic)
@@ -122,13 +137,15 @@ enum StatuslineHook {
     // MARK: - 安装 / 卸载
 
     /// 幂等确保已注册（启动时调用）：未安装、或已安装但指向的二进制不是当前 app（app 被移动/换构建）时，(重新)安装。
+    /// 跨机自愈：settings.json 从另一台 Mac 同步过来时，里面写的是别处的绝对路径（甚至指向已不存在的二进制），
+    /// 此时 currentCommand 不含本机 bin → 走 install() 重写为当前路径，Claude Code 不会再去调一个死命令。
     static func ensureInstalled() {
         guard let bin = Bundle.main.executablePath else { return }
         if isInstalled, currentCommand()?.contains(bin) == true { return }
         install()
     }
 
-    private static func currentCommand() -> String? {
+    static func currentCommand() -> String? {
         guard let data = try? Data(contentsOf: claudeSettings),
               let s = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let sl = s["statusLine"] as? [String: Any] else { return nil }
@@ -150,7 +167,7 @@ enum StatuslineHook {
         }
 
         // 记下接管前的原 statusLine 整个对象（仅当它不是我们自己），供透传与卸载原样还原
-        if let sl = settings["statusLine"] as? [String: Any], !isOurs(sl["command"] as? String ?? ""),
+        if let sl = settings["statusLine"] as? [String: Any], !objectIsOurs(sl),
            let data = try? JSONSerialization.data(withJSONObject: sl) {
             try? data.write(to: innerStatusLineFile, options: .atomic)
         }
@@ -159,6 +176,7 @@ enum StatuslineHook {
             "type": "command",
             "command": "\"\(binPath)\" --statusline",
             "padding": 0,
+            ownerMarkerKey: true,    // 归属标记：卸载/识别时精确认定为我们，不靠命令子串
         ]
         writeSettings(settings)
     }
@@ -169,16 +187,17 @@ enum StatuslineHook {
         let fm = FileManager.default
         if let data = try? Data(contentsOf: claudeSettings),
            var settings = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let sl = settings["statusLine"] as? [String: Any],
-           let cmd = sl["command"] as? String, isOurs(cmd) {       // 只有当前确实是我们才动它
+           let sl = settings["statusLine"] as? [String: Any], objectIsOurs(sl) {   // 只有当前确实是我们才动它
             if let inner = innerStatusLine() {
                 settings["statusLine"] = inner          // 整对象原样还原（保留 padding 等所有字段）
             } else {
                 settings.removeValue(forKey: "statusLine")
             }
             writeSettings(settings)
+            // 仅在确实还原成功后才删链接文件；否则保留——statusLine 已被外部改成别的命令时，
+            // 这是用户原命令的唯一记录，不能在这种情况下删掉（否则透传/将来还原都丢了）。
+            try? fm.removeItem(at: innerStatusLineFile)
         }
-        try? fm.removeItem(at: innerStatusLineFile)   // 已还原进 settings.json，链接文件不再需要
         if purgeData { try? fm.removeItem(at: ratelimitsFile) }
     }
 
@@ -186,9 +205,56 @@ enum StatuslineHook {
     static var isInstalled: Bool {
         guard let data = try? Data(contentsOf: claudeSettings),
               let settings = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let sl = settings["statusLine"] as? [String: Any],
-              let cmd = sl["command"] as? String else { return false }
-        return isOurs(cmd)
+              let sl = settings["statusLine"] as? [String: Any] else { return false }
+        return objectIsOurs(sl)
+    }
+
+    // MARK: - 诊断（设置页「集成状态」用）
+
+    struct Diagnostics {
+        let installed: Bool
+        let command: String?          // 当前写进 settings.json 的 statusLine 命令
+        let wrappedInner: String?     // 接管前用户原有的 statusline 命令（已透传），无则 nil
+        let ratelimitsExists: Bool
+        let capturedAt: Date?         // 上次收到额度数据的时刻（陈旧度）
+        let settingsPath: String
+        let supportDirPath: String
+
+        /// 可一键复制、贴进 issue 的纯文本快照。
+        var copyText: String {
+            var L: [String] = ["ClaudeNotch 集成诊断"]
+            L.append("已接入: \(installed ? "是" : "否")")
+            L.append("statusLine 命令: \(command ?? "（无）")")
+            L.append("透传的原命令: \(wrappedInner ?? "（无）")")
+            L.append("ratelimits.json: \(ratelimitsExists ? "存在" : "缺失")")
+            if let c = capturedAt {
+                let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                L.append("上次额度数据: \(f.string(from: c))")
+            } else {
+                L.append("上次额度数据: 尚无")
+            }
+            L.append("settings.json: \(settingsPath)")
+            L.append("支持目录: \(supportDirPath)")
+            return L.joined(separator: "\n")
+        }
+    }
+
+    static func diagnostics() -> Diagnostics {
+        var captured: Date?
+        let exists = FileManager.default.fileExists(atPath: ratelimitsFile.path)
+        if exists, let data = try? Data(contentsOf: ratelimitsFile),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let t = (obj["capturedAt"] as? NSNumber)?.doubleValue {
+            captured = Date(timeIntervalSince1970: t)
+        }
+        return Diagnostics(
+            installed: isInstalled,
+            command: currentCommand(),
+            wrappedInner: innerCommand(),
+            ratelimitsExists: exists,
+            capturedAt: captured,
+            settingsPath: claudeSettings.path,
+            supportDirPath: supportDir.path)
     }
 
     private static func writeSettings(_ settings: [String: Any]) {
