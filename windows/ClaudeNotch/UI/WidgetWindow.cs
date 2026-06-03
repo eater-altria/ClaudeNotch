@@ -180,7 +180,7 @@ public sealed class WidgetWindow : Window
             {
                 var cell = new StackPanel { Margin = new Thickness(8, 0, 8, 0), HorizontalAlignment = HorizontalAlignment.Center };
                 cell.Children.Add(MakeRing(m.PercentUsed, 56, 6, Theme.ForPercent(m.PercentUsed), $"{m.PercentUsed}%"));
-                cell.Children.Add(Tb(ShortMetricLabel(m), 10, Theme.TextDim) is var t ? Center(t) : t);
+                cell.Children.Add(Center(Tb(ShortMetricLabel(m), 10, Theme.TextDim)));
                 cell.Children.Add(Center(Tb(m.ResetDisplay, 10, Theme.TextDim)));
                 rings.Children.Add(cell);
             }

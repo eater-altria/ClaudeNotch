@@ -21,6 +21,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- WPF 为主：移除 WinForms/Drawing 的隐式 global using，避免 Button/ComboBox/Application/Color 与 WPF 同名冲突。
+         托盘文件 UI/Tray.cs 显式 using System.Windows.Forms / System.Drawing。 -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 内置 LiteLLM 价表快照（与 macOS 版同一份，构建时从 ../../macos 拷入由 CI 处理，亦可手动放置） -->
     <None Include="Assets\litellm_prices.json" Condition="Exists('Assets\litellm_prices.json')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
