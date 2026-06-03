@@ -8,7 +8,7 @@
     <LangVersion>latest</LangVersion>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
-    <!-- 自定义入口（Program.Main）以便 --statusline 助手在不启动 WPF 的情况下快进快出 -->
+    <!-- 自定义入口（Program.Main）以便 statusline 助手在不启动 WPF 的情况下快进快出 -->
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <StartupObject>ClaudeNotch.Program</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
