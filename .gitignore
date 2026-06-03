@@ -1,19 +1,19 @@
-# Swift Package Manager
+# ── macOS (Swift) ──
 .build/
 .swiftpm/
 Package.resolved
-
-# 构建产物
 *.app/
 *.dmg
 *.zip
+**/AppIcon.iconset/
 
-# 图标中间产物（可由 Tools/generate_icons.py 从 AppIconSource.png 重新生成）
-Resources/AppIcon.iconset/
+# ── Windows (.NET) ──
+[Bb]in/
+[Oo]bj/
+*.user
+.vs/
 
-# macOS
+# ── 通用 ──
 .DS_Store
-
-# Xcode
 xcuserdata/
 *.xcuserstate
