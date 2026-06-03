@@ -19,12 +19,14 @@ public sealed class SettingsWindow : Window
     {
         _settings = settings; _prices = prices; _rates = rates;
         Title = "ClaudeNotch";
-        Width = 460; Height = 640;
+        Width = 480; Height = 660;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        Background = new SolidColorBrush(Color.FromRgb(0x24, 0x24, 0x26));
+        Background = Theme.Brush(Theme.WindowBg);
+        FontFamily = Theme.FontText;
+        Win11.Modernize(this);
 
-        _root = new StackPanel { Margin = new Thickness(16) };
-        Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _root };
+        _root = new StackPanel { Margin = new Thickness(20) };
+        Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _root, Padding = new Thickness(0) };
 
         L.Changed += Build;
         _prices.Changed += () => Dispatcher.BeginInvoke(Build);

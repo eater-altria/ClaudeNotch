@@ -140,6 +140,39 @@ public sealed class UsageHistory
         int s = DayKey.From(start.Value);
         return Days.Keys.Where(k => k >= s).OrderBy(x => x).ToList();
     }
+
+    /// <summary>连续活跃天数（含今天或昨天起算）、最长连续、最忙一天（按某指标）。</summary>
+    public (int current, int longest, (int day, double value)? busiest) Streaks(HeatmapMetric metric)
+    {
+        var active = new HashSet<int>(ActiveDayKeys);
+        if (active.Count == 0) return (0, 0, null);
+        var sorted = active.OrderBy(x => x).ToList();
+
+        int longest = 1, run = 1;
+        for (int i = 1; i < sorted.Count; i++)
+        {
+            if (DayKey.ToDate(sorted[i - 1]) is DateTime pd && DayKey.ToDate(sorted[i]) is DateTime cd
+                && pd.Date.AddDays(1) == cd.Date) { run++; longest = Math.Max(longest, run); }
+            else run = 1;
+        }
+
+        int current = 0;
+        var cursor = DateTime.Today;
+        if (!active.Contains(DayKey.From(cursor)))
+        {
+            cursor = cursor.AddDays(-1);
+            if (!active.Contains(DayKey.From(cursor))) { current = 0; cursor = DateTime.Today; }
+        }
+        while (active.Contains(DayKey.From(cursor))) { current++; cursor = cursor.AddDays(-1); }
+
+        (int day, double value)? busiest = null;
+        foreach (var d in active)
+        {
+            double v = Days.TryGetValue(d, out var s) ? s.MetricValue(metric) : 0;
+            if (busiest is null || v > busiest.Value.value) busiest = (d, v);
+        }
+        return (current, longest, busiest);
+    }
 }
 
 /// <summary>一行 transcript 的解析结果。</summary>
