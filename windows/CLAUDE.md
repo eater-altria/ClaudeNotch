@@ -30,10 +30,11 @@ ClaudeNotch 的 **Windows 原生版**：C# / .NET 8 / WPF（+ WinForms 仅用于
 | `Core/Stores.cs` | UsageStore/SessionStore/HistoryStore + Notifier 出口 |
 | `Core/Localization.cs` / `Currency.cs` | `L.Tr(中,英)` 跟随系统；`Money` $/¥ + 汇率(open.er-api.com 周刷新) |
 | `Core/Settings.cs` / `StartupRegistry.cs` | 设置持久化 + 开机自启(HKCU Run) |
-| `UI/WidgetWindow.cs` | 置顶可拖拽悬浮挂件：折叠药丸 ↔ 展开面板（渐变环 + 会话列表）；右键菜单同托盘 |
-| `UI/RingControl.cs` / `Theme.cs` | 渐变进度环 + 色板 |
+| `UI/WidgetWindow.cs` | 置顶可拖拽**悬浮球**：折叠态圆球(环=**订阅剩余容量**、中心大数字=剩余%) ↔ 展开现代面板(剩余环组 + 会话列表 + 操作)；右键菜单同托盘 |
+| `UI/Win11.cs` | DwmSetWindowAttribute：窗口圆角 + 沉浸式深色标题栏（旧版自动忽略） |
+| `UI/RingControl.cs` / `Theme.cs` | 渐变进度环 + Fluent 调色板(Segoe UI Variable / 强调色 / 卡片) |
 | `UI/Tray.cs` | 托盘 NotifyIcon + 菜单（设置/数据统计/刷新/退出）+ 气泡通知 |
-| `UI/SettingsWindow.cs` / `AnalyticsWindow.cs` | 设置 / 数据统计（KPI+热力图+按模型/项目+导出 CSV） |
+| `UI/SettingsWindow.cs` / `AnalyticsWindow.cs` | 设置 / 数据统计（已对齐 Mac：KPI + 热力图[月/周标签+图例+选中日明细] + 趋势柱状 + 时段打卡7×24 + 按模型/项目/缓存效率/连续&峰值 + 导出 CSV/JSON） |
 
 ## ⚠️ 与 macOS 版的有意差异
 
