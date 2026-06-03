@@ -1,0 +1,58 @@
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+    tags:
+      - 'win-v*'
+  pull_request:
+    paths:
+      - 'windows/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore ClaudeNotch.sln
+
+      - name: Build (Release)
+        run: dotnet build ClaudeNotch.sln -c Release --no-restore
+
+      - name: Publish (self-contained win-x64 single file)
+        run: >
+          dotnet publish ClaudeNotch/ClaudeNotch.csproj -c Release -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path publish/* -DestinationPath ClaudeNotch-windows-x64.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeNotch-windows-x64
+          path: windows/ClaudeNotch-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Release (on win-v* tag)
+        if: startsWith(github.ref, 'refs/tags/win-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: windows/ClaudeNotch-windows-x64.zip
