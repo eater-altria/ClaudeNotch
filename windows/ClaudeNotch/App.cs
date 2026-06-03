@@ -23,6 +23,12 @@ public sealed class App : Application
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+        // 现代 Fluent 2 / Win11 控件样式（深色）：合并后隐式套用到所有标准 WPF 控件与右键菜单，
+        // 一举替换掉默认的 Aero/经典观感。必须在任何窗口构建前完成。
+        Resources.MergedDictionaries.Add(new iNKORE.UI.WPF.Modern.ThemeResources());
+        Resources.MergedDictionaries.Add(new iNKORE.UI.WPF.Modern.Controls.XamlControlsResources());
+        iNKORE.UI.WPF.Modern.ThemeManager.Current.ApplicationTheme = iNKORE.UI.WPF.Modern.ApplicationTheme.Dark;
+
         _settings = AppSettings.Load();
         L.Init(_settings.Lang);
 
