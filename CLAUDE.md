@@ -30,10 +30,11 @@ make dist DEV_ID="Developer ID Application: NAME (TEAMID)"   # 签名+公证+DMG
 
 | 文件 | 职责 |
 |---|---|
-| `main.swift` / `AppDelegate.swift` | 入口（accessory 策略）；状态栏菜单（动态登录/退出登录、设置）；串联各 store/manager |
-| `ClaudeSession.swift` | 隐藏 WKWebView：登录 claude.ai、抓 `settings/usage`、退出登录清 cookie |
-| `UsageStore.swift` | 订阅额度状态机 + 5 分钟刷新 + 消耗速率投影 + 额度阈值通知 |
-| `UsageModels.swift` | 额度数据/解析/颜色/投影 |
+| `main.swift` / `AppDelegate.swift` | 入口（accessory 策略；`--statusline` 时只跑钩子助手即退出，不起 GUI）；状态栏菜单（仅 设置/刷新/退出，**无登录**）；启动 `ensureInstalled()` 接钩子、`applicationWillTerminate` 时 `uninstall(purgeData:false)` 还原 settings.json（保留数据）；串联各 store/manager |
+| `UsageProvider.swift` | `FetchOutcome`（success/failure）+ 来源抽象 `UsageProvider` + `StatuslineProvider`（读 statusline 钩子落盘的额度，**唯一来源**） |
+| `StatuslineHook.swift` | 与 Claude Code `statusLine` 钩子对接：`--statusline` 助手（读 stdin→落盘 `rate_limits`→透传原命令）+ `ensureInstalled`/install/uninstall（改写 `~/.claude/settings.json`，整文件备份 + 链接/原样还原原 statusline 对象，路径变化自愈） |
+| `UsageStore.swift` | 订阅额度状态机（idle/loading/ready/**waiting**/error，无 loggedOut）+ 5 分钟刷新 + 消耗速率投影 + 额度阈值通知；来源仅 `StatuslineProvider` |
+| `UsageModels.swift` | 额度数据/解析/颜色/投影；`*ResetAt: Date?` 绝对刷新时刻、`capturedAt` 决定「更新于」新鲜度 |
 | `SessionMonitor.swift` | `SessionScanner`（扫本地 transcript 算花费/上下文）+ `SessionStore`（30s 轮询 + 上下文告警） |
 | `SessionModels.swift` | `SessionInfo`、定价表 `ModelPricing`、`JumpTarget`/`TerminalKind` |
 | `ProcessProbe.swift` | libproc 探测运行中的 claude 进程（cwd/启动时间/tty/env/终端类型/跳转目标） |
@@ -63,8 +64,13 @@ make dist DEV_ID="Developer ID Application: NAME (TEAMID)"   # 签名+公证+DMG
 - 进程 cwd 用 `proc_pidinfo(PROC_PIDVNODEPATHINFO)`；启动时间用 `PROC_PIDTBSDINFO.pbi_start_tvsec`；
   tty 用 `e_tdev` + `devname`；env 从 KERN_PROCARGS2 跳过 argc 个 argv 后解析。
 - **claude 不持续持有 transcript 句柄**（lsof 抓不到），所以没法靠打开的文件映射会话。
-- **进程↔transcript 匹配用「进程启动时间 ↔ 文件创建(birth)时间」配对**（容差 5 分钟，贪心唯一分配；resume 的用 mtime 兜底）。
-  **绝不能用 mtime 排序取最近 N 个**——同目录两个会话时，关掉刚写过的那个会错杀仍在运行的另一个。
+- **进程↔transcript 匹配以「mtime 最新」为准**（`SessionScanner.assign`）：取该目录 mtime 最新的 k 个文件
+  （k = 该目录活进程数）= 当前活跃会话，再把它们按「创建↔启动时间最近」配到具体进程（仅为跳转/终端归属准确）。
+  - **为什么不用「启动时间↔创建时间」做主键**（曾经的做法，已废弃）：一个长寿 claude 进程经 `/clear`、`--resume`
+    会先后创建多个会话文件，它的启动时间只对应**最早**那个；按创建↔启动配会把它**钉死在很久以前的旧会话**上，
+    花费/上下文永远停在旧值、永不更新（实测踩到：`/clear` 后挂件一直显示 25h 前那条的 35k）。它当前写的永远是 **mtime 最新**那个。
+  - 取舍：刚写过又立刻关闭的并发同目录会话，可能在「它仍是 mtime 最新、另一条在跑的尚未再写入」的短暂窗口里被误显示一次，
+    下次扫描即自愈——远小于「钉死旧会话」的持续错误。
 - 「活跃会话」= 有匹配到的活进程，不是「最近写过」。
 
 ### 3. 刘海 / 悬停（多次迭代的结论）
@@ -81,13 +87,13 @@ make dist DEV_ID="Developer ID Application: NAME (TEAMID)"   # 签名+公证+DMG
 ### 5. 其它
 - **上下文窗口**（环形图分母）transcript 里没记录：按模型默认（opus 1M、sonnet/haiku 200k）+ 启发式（观测峰值 >200k 自动升 1M），并始终显示原始 token 数。
 - **终端跳转**：Warp 读 env `WARP_FOCUS_URL` 开 `warp://`（精确、无需授权）；Terminal.app/iTerm2 按 tty 用 AppleScript（首次需「自动化」TCC 授权）；其它兜底激活 app。
-- **额度抓取**靠用户自己的 claude.ai 网页会话（WKWebView）。凭证只在 WebKit 里，app 不存不传。
-  注意 Anthropic 2026-02 起的消费者条款对第三方工具用账号会话收紧——公开分发有 ToS 风险。
+- **额度唯一来源 = Claude Code statusline 钩子（登录/网页抓取已彻底删除）**：启动 `StatuslineHook.ensureInstalled()` 把本 app 注册成 Claude Code 的 `statusLine` 命令（写 `~/.claude/settings.json`，整文件备份 + 链接原有 statusline；幂等、路径变化自愈、不可在 UI 关闭）；**退出时 `applicationWillTerminate` 自动 `uninstall(purgeData:false)` 还原 settings.json**（避免退出/卸载后留悬空命令；保留 `ratelimits.json` 供下次秒显）。Claude Code 对 statusLine 改动是热加载，故装/卸即时生效。Claude Code 渲染状态栏时把 `rate_limits.{five_hour,seven_day}`（`used_percentage` 0–100、`resets_at` Unix 秒，源自响应头 `anthropic-ratelimit-unified-*`）经 stdin 喂给 `--statusline` 助手，落盘 `ratelimits.json`，`StatuslineProvider` 读取。**不抓网页、不复用令牌。** 只在 Claude Code 运行时更新；没数据时挂件进入 `waiting` 态提示「跑一次 claude」。
+- **⚠️ 为什么是这条路（调研结论）：消费者订阅（Pro/Max）的 5h/周额度没有官方公开 API。** 唯一官方的 Admin usage/cost API 个人账号用不了（只报 org API 计费，非订阅额度）。最干净的数据 `GET api.anthropic.com/api/oauth/usage`（复用 Claude Code 的 OAuth 令牌）正是 Anthropic **2026-02 明令禁止**的「在 Claude Code/Claude.ai 之外复用 Pro/Max 令牌」（2026-04-05 起执行），且该端点会激进限流、Messages API 也已拒收该令牌——**别走 OAuth 这条路**。statusline 钩子是 Claude Code **主动**把数据交给第三方命令，合规风险最低，故定为唯一来源。
 - 通知用 UNUserNotificationCenter；**ad-hoc 签名下可能被系统静默**，Developer ID 公证后最稳。
 
 ## 已知待办 / 限制
 
 - 每块屏一个 22Hz 轮询定时器（功耗）——可合并成单定时器驱动所有挂件。
 - 非 Claude 子代理模型的计价近似（见上）——可接 LiteLLM 在线价表解决。
-- 同目录多个 `--resume` 会话的进程↔文件匹配靠 mtime 兜底，极端情况下仍可能配错。
+- 进程↔文件匹配以 mtime 最新为准；并发同目录会话「刚写完即关」的短暂窗口可能误显示一次（下次扫描自愈）。
 - 分发为 ad-hoc 签名；要免 Gatekeeper 警告需 `make dist`（Developer ID + 公证）。

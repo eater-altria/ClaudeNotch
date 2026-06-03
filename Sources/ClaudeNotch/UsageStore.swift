@@ -5,7 +5,7 @@ enum StoreState: Equatable {
     case idle
     case loading
     case ready
-    case loggedOut
+    case waiting      // 已接好 statusline，但还没收到 Claude Code 喂来的额度数据
     case error(String)
 }
 
@@ -20,15 +20,10 @@ final class UsageStore: ObservableObject {
     private var estimators: [String: BurnEstimator] = [:]
     @Published private(set) var projections: [String: BurnProjection] = [:]
 
-    private let session = ClaudeSession()
+    // 唯一来源：Claude Code 的 statusLine 钩子（合规、本地、不复用令牌）。
+    private let provider = StatuslineProvider()
     private var refreshTimer: Timer?
     let refreshInterval: TimeInterval = 300   // 5 分钟
-
-    init() {
-        session.onLoginSuccess = { [weak self] in
-            Task { await self?.refresh() }
-        }
-    }
 
     func start() {
         Task { await refresh() }
@@ -37,51 +32,28 @@ final class UsageStore: ObservableObject {
         }
     }
 
-    func presentLogin() {
-        session.presentLogin()
-    }
-
-    /// 是否已登录（用于状态栏菜单显示 登录/退出登录）
-    var isLoggedIn: Bool {
-        if case .loggedOut = state { return false }
-        return snapshot != nil
-    }
-
-    func logout() {
-        session.logout { [weak self] in
-            Task { @MainActor in
-                self?.snapshot = nil
-                self?.lastUpdated = nil
-                self?.state = .loggedOut
-            }
-        }
-    }
-
     func refresh() async {
         if case .loading = state { return }
         if snapshot == nil { state = .loading }
-        let outcome = await session.fetchUsage()
+        let outcome = await provider.fetchUsage()
         if ProcessInfo.processInfo.environment["CLAUDENOTCH_DEBUG"] != nil {
             switch outcome {
-            case .loggedOut: NSLog("[ClaudeNotch] fetch -> loggedOut")
-            case .failure(let m): NSLog("[ClaudeNotch] fetch -> failure: %@", m)
+            case .failure(let m): NSLog("[ClaudeNotch] fetch -> waiting/failure: %@", m)
             case .success(let r): NSLog("[ClaudeNotch] fetch -> success session=%@ weeklyAll=%@",
                                         String(describing: r.sessionPercent), String(describing: r.weeklyAllModelsPercent))
             }
         }
         switch outcome {
-        case .loggedOut:
-            state = .loggedOut
-        case .failure(let msg):
-            // 已有旧数据时保留展示，仅在无数据时进入 error
-            if snapshot == nil { state = .error(msg) }
+        case .failure:
+            // 没数据：首次进入「等待」态；已有旧快照则保留显示，不动 state。
+            if snapshot == nil { state = .waiting }
         case .success(let result):
-            let now = Date()
-            let snap = UsageSnapshot(from: result, fetchedAt: now)
-            updateProjections(for: snap, now: now)
+            let when = result.capturedAt ?? Date()
+            let snap = UsageSnapshot(from: result, fetchedAt: when)
+            updateProjections(for: snap, now: Date())
             checkThresholdNotifications(snap)
             snapshot = snap
-            lastUpdated = now
+            lastUpdated = when
             state = .ready
         }
     }
@@ -125,7 +97,7 @@ final class UsageStore: ObservableObject {
     var headlineText: String {
         switch state {
         case .loading where snapshot == nil: return "…"
-        case .loggedOut: return "登录"
+        case .waiting: return "—"
         case .error: return "!"
         default:
             if let h = snapshot?.headline { return "\(h.percentRemaining)%" }

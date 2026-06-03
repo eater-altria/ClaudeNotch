@@ -32,7 +32,6 @@ struct NotchRootView: View {
     @ObservedObject var sessionStore: SessionStore
     @ObservedObject var islandState: IslandState
     var hasRealNotch: Bool = false
-    var onLogin: () -> Void
     var onRefresh: () -> Void
     var onSessionTap: (SessionInfo) -> Void
 
@@ -127,8 +126,8 @@ struct NotchRootView: View {
     @ViewBuilder
     private var content: some View {
         switch store.state {
-        case .loggedOut:
-            loggedOutView
+        case .waiting:
+            waitingView
         case .error(let msg):
             errorView(msg)
         case .loading where store.snapshot == nil:
@@ -184,18 +183,12 @@ struct NotchRootView: View {
         .padding(.top, 2)
     }
 
-    private var loggedOutView: some View {
-        VStack(spacing: 10) {
-            Text("未登录 Claude").font(.system(size: 13, weight: .medium)).foregroundStyle(palette.text)
-            Text("登录后即可读取你的订阅额度").font(.system(size: 11)).foregroundStyle(palette.text(0.5))
-            Button(action: onLogin) {
-                Text("登录 Claude")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(palette.isDark ? .black : .white)
-                    .padding(.horizontal, 18).padding(.vertical, 7)
-                    .background(Capsule().fill(palette.text))
-            }
-            .buttonStyle(.plain)
+    private var waitingView: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "terminal").font(.system(size: 18)).foregroundStyle(palette.text(0.6))
+            Text("等待 Claude Code 额度数据").font(.system(size: 13, weight: .medium)).foregroundStyle(palette.text)
+            Text("在任意终端跑一次 claude，额度会自动出现").font(.system(size: 11)).foregroundStyle(palette.text(0.5))
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)

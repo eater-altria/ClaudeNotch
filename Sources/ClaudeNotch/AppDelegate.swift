@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         settings.onDisplaySettingsChange = { [weak self] in self?.notchManager.rebuild() }
         notchManager.rebuild()
 
+        // 唯一额度来源：自动把本 app 注册为 Claude Code 的 statusLine 钩子（幂等，路径变化时自愈）。
+        StatuslineHook.ensureInstalled()
+
         NotificationManager.shared.setEnabled(settings.notificationsEnabled)
 
         setupStatusItem()
@@ -36,6 +39,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // 退出前还原 ~/.claude/settings.json（把 statusLine 还原成你原有的），避免退出/卸载后留下指向本 app 的悬空命令。
+        // 保留 ratelimits.json，下次启动 ensureInstalled() 重新接回并能秒显上次额度。
+        StatuslineHook.uninstall(purgeData: false)
     }
 
     @objc private func screensChanged() {
@@ -71,8 +80,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private func updateStatusTitle() {
         guard let button = statusItem.button else { return }
         switch store.state {
-        case .loggedOut:
-            button.title = " 未登录"
         case .ready:
             if let h = store.snapshot?.headline {
                 button.title = " \(h.percentRemaining)%"
@@ -92,13 +99,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(withTitle: "设置…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "立即刷新", action: #selector(refreshAction), keyEquivalent: "r").target = self
 
-        // 自行判断登录态：已登录显示“退出登录”，否则“登录 Claude…”
-        if store.isLoggedIn {
-            menu.addItem(withTitle: "退出登录", action: #selector(logoutAction), keyEquivalent: "").target = self
-        } else {
-            menu.addItem(withTitle: "登录 Claude…", action: #selector(loginAction), keyEquivalent: "l").target = self
-        }
-
         menu.addItem(.separator())
         menu.addItem(withTitle: "退出", action: #selector(quitAction), keyEquivalent: "q").target = self
     }
@@ -107,8 +107,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         Task { await store.refresh() }
         sessionStore.refresh()
     }
-    @objc private func loginAction() { store.presentLogin() }
-    @objc private func logoutAction() { store.logout() }
     @objc private func quitAction() { NSApp.terminate(nil) }
 
     @objc private func openSettings() {
