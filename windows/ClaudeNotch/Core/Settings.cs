@@ -18,7 +18,7 @@ public sealed class AppSettings
     public double? WidgetY { get; set; }
     public bool WidgetExpanded { get; set; }
 
-    [JsonIgnore] public event Action? Changed;
+    public event Action? Changed;   // 事件不会被 System.Text.Json 序列化
 
     static readonly JsonSerializerOptions Opts = new() { WriteIndented = true };
 
