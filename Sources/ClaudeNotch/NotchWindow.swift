@@ -80,7 +80,6 @@ final class NotchWindowController {
             sessionStore: sessionStore,
             islandState: islandState,
             hasRealNotch: geometry.hasRealNotch,
-            onLogin: { [weak self] in self?.store.presentLogin() },
             onRefresh: { [weak self] in
                 Task { await self?.store.refresh() }
                 self?.sessionStore.refresh()

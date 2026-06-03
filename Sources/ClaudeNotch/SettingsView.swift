@@ -19,6 +19,11 @@ struct SettingsView: View {
                 Toggle("启用灵动岛", isOn: $settings.islandEnabled)
             }
 
+            Section("额度来源") {
+                Text("额度来自 Claude Code 的 statusLine 钩子（已自动接入，不抓网页、不复用令牌）。仅在 Claude Code 运行时更新；若长时间未显示，在任意终端跑一次 claude 即可。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("通知") {
                 Toggle("额度 / 上下文通知", isOn: $settings.notificationsEnabled)
                 Text("额度用到 80% / 95%、会话上下文 ≥90% 时发系统通知。")

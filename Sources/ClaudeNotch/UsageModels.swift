@@ -10,13 +10,16 @@ struct ScrapeResult: Codable {
     var weeklyAllModelsReset: String?
     var weeklySonnetPercent: Int?
     var weeklySonnetReset: String?
+    // 绝对刷新时间（来自 statusline 钩子的 resets_at）。
+    var sessionResetAt: Date?
+    var weeklyAllModelsResetAt: Date?
+    var weeklySonnetResetAt: Date?
+    var capturedAt: Date?      // 钩子落盘时刻（决定挂件「更新于」显示的真实新鲜度）
     var extraSpent: Double?
     var extraLimit: Double?
     var extraBalance: Double?
     var extraPercent: Int?
     var extraReset: String?
-    var isLoggedIn: Bool?
-    var error: String?
 }
 
 // MARK: - 颜色阈值
@@ -46,15 +49,23 @@ struct UsageMetric: Identifiable {
     let title: String          // “当前会话” / “本周·全模型” …
     let percentUsed: Int       // 已用百分比
     let resetRaw: String?      // 原始刷新文案，如 "1 hr 57 min" / "Thu 11:00 AM"
+    let resetAt: Date?         // 绝对刷新时刻（statusline 钩子提供时优先用它）
 
     var percentRemaining: Int { max(0, 100 - percentUsed) }
     var level: UsageLevel { UsageLevel(percentUsed: percentUsed) }
 
-    /// 若刷新文案是相对时长（"X hr Y min"），解析成剩余分钟数，否则 nil
-    var resetMinutesRemaining: Int? { Self.parseRelativeMinutes(resetRaw) }
+    /// 距刷新还剩多少分钟：有绝对时刻则按它算（含 "Thu 11:00 AM" 这类原本算不出的情形），
+    /// 否则退回解析相对时长文案。
+    var resetMinutesRemaining: Int? {
+        if let at = resetAt { return max(0, Int(at.timeIntervalSinceNow / 60)) }
+        return Self.parseRelativeMinutes(resetRaw)
+    }
 
     /// 友好的刷新时间展示
     var resetDisplay: String {
+        if let at = resetAt {
+            return Self.formatDuration(minutes: max(0, Int(at.timeIntervalSinceNow / 60))) + "后"
+        }
         guard let raw = resetRaw, !raw.isEmpty else { return "—" }
         if let mins = Self.parseRelativeMinutes(raw) {
             return Self.formatDuration(minutes: mins) + "后"
@@ -120,15 +131,15 @@ struct UsageSnapshot {
         self.fetchedAt = fetchedAt
         if let p = r.sessionPercent {
             session = UsageMetric(id: "session", title: "当前会话",
-                                  percentUsed: p, resetRaw: r.sessionResetTime)
+                                  percentUsed: p, resetRaw: r.sessionResetTime, resetAt: r.sessionResetAt)
         }
         if let p = r.weeklyAllModelsPercent {
             weeklyAll = UsageMetric(id: "weeklyAll", title: "本周 · 全模型",
-                                    percentUsed: p, resetRaw: r.weeklyAllModelsReset)
+                                    percentUsed: p, resetRaw: r.weeklyAllModelsReset, resetAt: r.weeklyAllModelsResetAt)
         }
         if let p = r.weeklySonnetPercent {
             weeklySonnet = UsageMetric(id: "weeklySonnet", title: "本周 · Sonnet",
-                                       percentUsed: p, resetRaw: r.weeklySonnetReset)
+                                       percentUsed: p, resetRaw: r.weeklySonnetReset, resetAt: r.weeklySonnetResetAt)
         }
         extraPercent = r.extraPercent
         extraSpent = r.extraSpent

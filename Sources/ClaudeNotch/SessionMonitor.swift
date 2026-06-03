@@ -72,40 +72,43 @@ final class SessionScanner {
         return result.sorted { $0.lastActivity > $1.lastActivity }
     }
 
-    /// 把同目录下的活进程配对到各自的 transcript：
-    /// ① 先按“启动时间 ↔ 创建时间”最近、容差内做唯一贪心匹配（新会话精确对应）；
-    /// ② 仍未配上的进程（如 --resume：进程新、文件旧），从剩余文件里按 mtime 最近补齐。
+    /// 把同目录下的活进程配对到「它当前正在写的」transcript。
+    ///
+    /// **关键：以 mtime 最新优先，而不是「启动时间↔创建时间」。**
+    /// 一个长寿 `claude` 进程经 `/clear`、`--resume` 会先后创建多个会话文件，它的启动时间只对应**最早**那个，
+    /// 但它当前写的是 **mtime 最新**那个。若按创建↔启动配，会把进程钉死在很久以前的旧会话上
+    /// （花费/上下文永远停在旧值、永不更新）——这是实测踩到的坑。
+    /// 因此：取 mtime 最新的 k 个文件（k = 该目录活进程数）= 当前活跃会话；
+    /// 再把它们配到具体进程（按创建↔启动最近，仅为跳转/终端归属准确）。
+    ///
+    /// 取舍：刚写过又立刻关闭的并发同目录会话，可能在它仍是 mtime 最新、而另一条在跑的会话尚未再写入的
+    /// 短暂窗口里被误显示一次，下次扫描（或对方一写入）即自愈——远小于「钉死旧会话」的持续错误。
     private static func assign(procs: [LiveClaude], candidates: [Candidate]) -> [(url: URL, proc: LiveClaude)] {
-        let tolerance: TimeInterval = 300   // 启动与创建相差 5 分钟内视为同一会话
+        guard !procs.isEmpty, !candidates.isEmpty else { return [] }
 
-        // ① 生成所有容差内的 (进程,文件) 配对，按时间差升序贪心唯一分配
-        var pairs: [(diff: TimeInterval, pi: Int, ci: Int)] = []
-        for (pi, p) in procs.enumerated() {
-            for (ci, c) in candidates.enumerated() {
-                let diff = abs(c.creation.timeIntervalSince(p.startTime))
-                if diff <= tolerance { pairs.append((diff, pi, ci)) }
+        // 活跃会话 = 进程正在写的 = mtime 最新的 k 个
+        let active = Array(candidates.sorted { $0.mtime > $1.mtime }.prefix(procs.count))
+
+        // 把活跃文件配到具体进程：按「创建时间↔启动时间」最近做唯一贪心（只为跳转/终端归属准确）。
+        // 文件数 ≤ 进程数，故每个活跃文件都会拿到一个进程。
+        var pairs: [(diff: TimeInterval, fi: Int, pi: Int)] = []
+        for (fi, f) in active.enumerated() {
+            for (pi, p) in procs.enumerated() {
+                pairs.append((abs(f.creation.timeIntervalSince(p.startTime)), fi, pi))
             }
         }
         pairs.sort { $0.diff < $1.diff }
 
-        var usedProc = Set<Int>(), usedCand = Set<Int>()
+        var usedFile = Set<Int>(), usedProc = Set<Int>()
         var chosen: [(url: URL, proc: LiveClaude)] = []
         for pair in pairs {
-            if usedProc.contains(pair.pi) || usedCand.contains(pair.ci) { continue }
-            usedProc.insert(pair.pi); usedCand.insert(pair.ci)
-            chosen.append((candidates[pair.ci].url, procs[pair.pi]))
+            if usedFile.contains(pair.fi) || usedProc.contains(pair.pi) { continue }
+            usedFile.insert(pair.fi); usedProc.insert(pair.pi)
+            chosen.append((active[pair.fi].url, procs[pair.pi]))
         }
-
-        // ② 兜底：未配上的进程（如 --resume）→ 剩余文件按 mtime 最近补齐
-        let leftoverProcs = procs.indices.filter { !usedProc.contains($0) }
-        if !leftoverProcs.isEmpty {
-            let remaining = candidates.indices
-                .filter { !usedCand.contains($0) }
-                .sorted { candidates[$0].mtime > candidates[$1].mtime }
-            for (k, ci) in remaining.prefix(leftoverProcs.count).enumerated() {
-                usedCand.insert(ci)
-                chosen.append((candidates[ci].url, procs[leftoverProcs[k]]))
-            }
+        // 兜底（理论上不会触发，因 active.count ≤ procs.count）
+        for fi in active.indices where !usedFile.contains(fi) {
+            chosen.append((active[fi].url, procs[0]))
         }
         return chosen
     }
