@@ -7,10 +7,12 @@ using Microsoft.UI.Xaml.Controls;
 namespace ClaudeNotch;
 
 /// <summary>
-/// 代码态 Application(无 App.xaml)。编排:装配 Core stores、托盘、悬浮挂件。
-/// 注意:XamlControlsResources 必须在 OnLaunched(而非构造函数)里 merge,否则 COMException。
+/// Application。编排:装配 Core stores、托盘、悬浮挂件。
+/// 注意:App.xaml(ApplicationDefinition)是“能正常启动”的前提 —— 它触发 MSBuild 生成
+/// resources.pri 并合并框架 themeresources,否则 unpackaged+自包含下 ms-appx 资源无法解析、启动即崩。
+/// XamlControlsResources 已在 App.xaml 声明,这里不再代码 merge。
 /// </summary>
-public sealed class App : Application
+public sealed partial class App : Application
 {
     DispatcherQueue _ui = null!;
     AppSettings _settings = null!;
@@ -24,7 +26,7 @@ public sealed class App : Application
     SettingsWindow? _settingsWin;
     AnalyticsWindow? _analyticsWin;
 
-    public App() { }
+    public App() { InitializeComponent(); }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
@@ -36,9 +38,6 @@ public sealed class App : Application
     {
         // WinUI 线程未捕获异常也落盘。
         UnhandledException += (_, e) => CrashLog.Write("App.UnhandledException", e.Exception);
-
-        // 控件默认样式(Fluent)。必须在 App 完全构造后加载。
-        Resources.MergedDictionaries.Add(new XamlControlsResources());
 
         _ui = DispatcherQueue.GetForCurrentThread();
 

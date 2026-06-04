@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ⚠️ 这是本工程唯一的 .xaml,且是“能正常启动”的硬性前提,不要删。
+  纯代码(无 App.xaml)时 MSBuild 的 markup 编译器不运行 → 不生成 app 的 resources.pri
+  → 框架的 ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml 无法解析
+  → new XamlControlsResources()/InitializeComponent() 直接 COMException 闪退(unpackaged+自包含)。
+  ApplicationDefinition(App.xaml)触发 PRI 生成并把框架 themeresources 合并进 resources.pri,
+  XamlControlsResources 也改在这里声明(取代原 OnLaunched 里的代码 merge)。
+-->
+<Application
+    x:Class="ClaudeNotch.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+    </Application.Resources>
+</Application>

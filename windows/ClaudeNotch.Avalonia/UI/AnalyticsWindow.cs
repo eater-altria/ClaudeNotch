@@ -1,68 +1,48 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Shapes;
+using Avalonia.Input;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using ClaudeNotch.Core;
-using Microsoft.UI;
-using Microsoft.UI.Windowing;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
-using Windows.Foundation;
-using Windows.Graphics;
-using Windows.Storage;
-using Windows.Storage.Pickers;
-using Windows.UI;
-using WinRT.Interop;
 
 namespace ClaudeNotch.UI;
 
-/// <summary>数据统计窗(Win11 风):Mica + 自定义标题栏 + SelectorBar 指标切换 + KPI + 热力图 + 趋势 + 打卡 + 模型/项目/缓存/连续 + 导出。</summary>
+/// <summary>数据统计窗:KPI + 热力图 + 趋势(连续日轴) + 时段打卡 + 模型/项目/缓存/连续 + 导出。深色。</summary>
 public sealed class AnalyticsWindow : Window
 {
     readonly HistoryStore _store;
     readonly StackPanel _root;
-    readonly AppWindow _appWindow;
-    readonly IntPtr _hwnd;
     HeatmapMetric _metric = HeatmapMetric.Billable;
     HistoryRange _range = HistoryRange.M12;
     int? _selectedDay;
 
-    static readonly Color Fg = Theme.Text;
-    static readonly Color Dim = Theme.TextDim;
-    static readonly Color Faint = Theme.TextFaint;
-    static readonly Color Green = Theme.Green;
+    static Color Fg => Palette.Text;
+    static Color Dim => Palette.TextDim;
+    static Color Faint => Palette.TextFaint;
+    static Color Green => Palette.Green;
 
     public AnalyticsWindow(HistoryStore store)
     {
         _store = store;
-        Title = "ClaudeNotch";
-        SystemBackdrop = new MicaBackdrop();
-        ExtendsContentIntoTitleBar = true;
+        Title = L.Tr("数据统计", "Analytics");
+        Width = 980; Height = 800;
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        Background = Palette.Brush(Palette.WindowBg);
 
-        _hwnd = WindowNative.GetWindowHandle(this);
-        var id = Win32Interop.GetWindowIdFromWindow(_hwnd);
-        _appWindow = AppWindow.GetFromWindowId(id);
-        _appWindow.Resize(new SizeInt32(980, 800));
-        CenterOnScreen(id);
+        _root = new StackPanel { Margin = new Thickness(24) };
+        Content = new ScrollViewer { Content = _root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
 
-        var titleBar = new Grid { Height = 40, Padding = new Thickness(16, 0, 16, 0), VerticalAlignment = VerticalAlignment.Top };
-        titleBar.Children.Add(new TextBlock { Text = "ClaudeNotch", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Foreground = Theme.Brush(Dim) });
-        SetTitleBar(titleBar);
-
-        _root = new StackPanel { Margin = new Thickness(24, 48, 24, 24) };
-        var scroller = new ScrollViewer { Content = _root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        var rootGrid = new Grid();
-        rootGrid.Children.Add(scroller);
-        rootGrid.Children.Add(titleBar);
-        // 调色板是深色硬编码,但 Mica 默认跟随系统;系统浅色时浅字+浅卡叠白底 → 全白看不见。
-        // 强制深色:Mica 渲染深色变体,内置控件(ComboBox/SelectorBar/Button/滚动条)也变深,与调色板一致。
-        rootGrid.RequestedTheme = ElementTheme.Dark;
-        Content = rootGrid;
-        DarkCaptionButtons();
-
-        _store.Changed += () => DispatcherQueue.TryEnqueue(Build);
-        L.Changed += () => DispatcherQueue.TryEnqueue(Build);
-        Activated += (_, _) => _store.RefreshIfNeeded();
+        _store.Changed += () => Dispatcher.UIThread.Post(Build);
+        L.Changed += () => Dispatcher.UIThread.Post(Build);
+        ActualThemeVariantChanged += (_, _) => { Background = Palette.Brush(Palette.WindowBg); Build(); };
+        Opened += (_, _) => _store.RefreshIfNeeded();
         Build();
     }
 
@@ -80,8 +60,7 @@ public sealed class AnalyticsWindow : Window
         }
 
         // KPI
-        var kpis = new Grid { Margin = new Thickness(0, 0, 0, 12) };
-        for (int i = 0; i < 4; i++) kpis.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var kpis = new Grid { Margin = new Thickness(0, 0, 0, 12), ColumnDefinitions = new ColumnDefinitions("*,*,*,*") };
         AddCol(kpis, Kpi(L.Tr("今日", "Today"), h.Today()), 0);
         AddCol(kpis, Kpi(L.Tr("7 天", "7 days"), h.Recent(7)), 1);
         AddCol(kpis, Kpi(L.Tr("30 天", "30 days"), h.Recent(30)), 2);
@@ -104,16 +83,12 @@ public sealed class AnalyticsWindow : Window
         _root.Children.Add(Card(L.Tr($"时段打卡（计费，{_range.Label()}）", $"Hourly punch card (billable, {_range.Label()})"), inner => inner.Children.Add(BuildPunchCard(h))));
 
         var agg = h.Aggregate(h.DayKeysIn(_range));
-        var row1 = new Grid();
-        row1.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row1.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var row1 = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*") };
         AddCol(row1, ModelPanel(agg), 0);
         AddCol(row1, ProjectPanel(agg), 1);
         _root.Children.Add(row1);
 
-        var row2 = new Grid();
-        row2.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row2.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var row2 = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*") };
         AddCol(row2, CachePanel(agg), 0);
         AddCol(row2, StreaksPanel(h), 1);
         _root.Children.Add(row2);
@@ -122,29 +97,19 @@ public sealed class AnalyticsWindow : Window
             "“Cost” is estimated at API rates; subscription users aren't billed this way. Uncatalogued third-party models fall back to Sonnet (marked “est”). Times are bucketed by local calendar."), 11, Faint, top: 6));
     }
 
-    static void AddCol(Grid g, FrameworkElement e, int col) { Grid.SetColumn(e, col); g.Children.Add(e); }
+    static void AddCol(Grid g, Control e, int col) { Grid.SetColumn(e, col); g.Children.Add(e); }
 
     // ── 顶栏 ──
-    FrameworkElement Header()
+    Control Header()
     {
-        var grid = new Grid { Margin = new Thickness(0, 0, 0, 16) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var title = new TextBlock { Text = L.Tr("数据统计", "Analytics"), FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.Bold, Foreground = Theme.Brush(Fg), FontFamily = Theme.Font, VerticalAlignment = VerticalAlignment.Center };
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 16), ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var title = new TextBlock { Text = L.Tr("数据统计", "Analytics"), FontSize = 22, FontWeight = FontWeight.Bold, Foreground = Palette.Brush(Fg), FontFamily = new FontFamily(Palette.FontDisplay), VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(title, 0); grid.Children.Add(title);
 
         var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
 
-        var metricBar = new SelectorBar { VerticalAlignment = VerticalAlignment.Center };
-        foreach (var m in new[] { HeatmapMetric.Billable, HeatmapMetric.Cost, HeatmapMetric.Total })
-            metricBar.Items.Add(new SelectorBarItem { Text = m.Label(), Tag = m });
-        metricBar.SelectedItem = metricBar.Items[(int)_metric];
-        metricBar.SelectionChanged += (_, _) =>
-        {
-            if (metricBar.SelectedItem?.Tag is HeatmapMetric m) { _metric = m; _selectedDay = null; Build(); }
-        };
-        controls.Children.Add(metricBar);
+        // 指标分段控件(等高,与右侧按钮/下拉对齐 —— 修旧版 SelectorBar 高出一截)
+        controls.Children.Add(BuildSegmented());
 
         var rangeCombo = new ComboBox { MinWidth = 96, Height = 32, VerticalAlignment = VerticalAlignment.Center };
         foreach (var r in new[] { HistoryRange.M3, HistoryRange.M6, HistoryRange.M12, HistoryRange.All })
@@ -163,18 +128,49 @@ public sealed class AnalyticsWindow : Window
         return grid;
     }
 
+    Control BuildSegmented()
+    {
+        var box = new Border
+        {
+            Height = 32, CornerRadius = new CornerRadius(6), Padding = new Thickness(2),
+            Background = Palette.Brush(Palette.SubtleFill),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
+        foreach (var m in new[] { HeatmapMetric.Billable, HeatmapMetric.Cost, HeatmapMetric.Total })
+        {
+            bool sel = m == _metric;
+            var b = new Button
+            {
+                Content = m.Label(),
+                FontSize = 12,
+                Padding = new Thickness(10, 0, 10, 0),
+                CornerRadius = new CornerRadius(4),
+                Background = sel ? Palette.Brush(Palette.Track) : Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Foreground = Palette.Brush(sel ? Fg : Dim),
+                VerticalContentAlignment = VerticalAlignment.Center,
+            };
+            var metric = m;
+            b.Click += (_, _) => { if (_metric != metric) { _metric = metric; _selectedDay = null; Build(); } };
+            row.Children.Add(b);
+        }
+        box.Child = row;
+        return box;
+    }
+
     // ── KPI ──
     Border Kpi(string title, DayStat s)
     {
         var sp = new StackPanel();
         sp.Children.Add(T(title, 12, Dim));
-        sp.Children.Add(new TextBlock { Text = Money.Approx(s.Cost), FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = Theme.Brush(Fg), FontFamily = Theme.Font });
+        sp.Children.Add(new TextBlock { Text = Money.Approx(s.Cost), FontSize = 22, FontWeight = FontWeight.SemiBold, Foreground = Palette.Brush(Fg), FontFamily = new FontFamily(Palette.FontDisplay) });
         sp.Children.Add(T($"{TranscriptParser.TokensShort(s.Tokens.Billable)} billable · " + L.Tr($"{s.MessageCount} 条", $"{s.MessageCount} msgs"), 11, Dim));
-        return new Border { Background = Theme.Brush(Theme.CardBg), CornerRadius = new CornerRadius(10), Padding = new Thickness(14), Margin = new Thickness(0, 0, 8, 0), Child = sp };
+        return new Border { Background = Palette.Brush(Palette.CardBg), CornerRadius = new CornerRadius(10), Padding = new Thickness(14), Margin = new Thickness(0, 0, 8, 0), Child = sp };
     }
 
     // ── 热力图 ──
-    FrameworkElement BuildHeatmap(UsageHistory h)
+    Control BuildHeatmap(UsageHistory h)
     {
         var keys = h.DayKeysIn(_range);
         var values = keys.Where(k => (h.Days.TryGetValue(k, out var s) ? s.MetricValue(_metric) : 0) > 0).Select(k => h.Days[k].MetricValue(_metric)).ToList();
@@ -195,20 +191,20 @@ public sealed class AnalyticsWindow : Window
             var d = gridStart.AddDays(w * 7);
             string label = (d.Month != lastMonth) ? fmt.GetAbbreviatedMonthName(d.Month) : "";
             lastMonth = d.Month;
-            monthRow.Children.Add(new TextBlock { Text = label, FontSize = 9, Foreground = Theme.Brush(Faint), Width = 13, FontFamily = Theme.FontText });
+            monthRow.Children.Add(new TextBlock { Text = label, FontSize = 9, Foreground = Palette.Brush(Faint), Width = 13, FontFamily = new FontFamily(Palette.FontFamily) });
         }
         outer.Children.Add(monthRow);
 
         var body = new StackPanel { Orientation = Orientation.Horizontal };
         var weekdayCol = new StackPanel { Width = 24 };
         for (int r = 0; r < 7; r++)
-            weekdayCol.Children.Add(new TextBlock { Text = (r % 2 == 1) ? fmt.AbbreviatedDayNames[r] : "", FontSize = 9, Foreground = Theme.Brush(Faint), Height = 13, FontFamily = Theme.FontText });
+            weekdayCol.Children.Add(new TextBlock { Text = (r % 2 == 1) ? fmt.AbbreviatedDayNames[r] : "", FontSize = 9, Foreground = Palette.Brush(Faint), Height = 13, FontFamily = new FontFamily(Palette.FontFamily) });
         body.Children.Add(weekdayCol);
 
         var weeks = new StackPanel { Orientation = Orientation.Horizontal };
         for (int w = 0; w < weekCount; w++)
         {
-            var col = new StackPanel { Margin = new Thickness(0, 0, 2, 0) };
+            var colSp = new StackPanel { Margin = new Thickness(0, 0, 2, 0) };
             for (int r = 0; r < 7; r++)
             {
                 var date = gridStart.AddDays(w * 7 + r);
@@ -221,18 +217,18 @@ public sealed class AnalyticsWindow : Window
                 {
                     Width = 11, Height = 11, Margin = new Thickness(0, 0, 0, 2),
                     CornerRadius = new CornerRadius(2.5),
-                    Background = Theme.Brush(HeatColor(level, inRange)),
+                    Background = Palette.Brush(HeatColor(level, inRange)),
                 };
-                if (inRange) ToolTipService.SetToolTip(cell, $"{date:yyyy-MM-dd} · {CellTip(h, date)}");
+                if (inRange) ToolTip.SetTip(cell, $"{date:yyyy-MM-dd} · {CellTip(h, date)}");
                 if (inRange && _selectedDay == dayKey)
                 {
-                    cell.BorderBrush = Theme.Brush(Fg);
+                    cell.BorderBrush = Palette.Brush(Fg);
                     cell.BorderThickness = new Thickness(1.5);
                 }
-                if (inRange) cell.Tapped += (_, _) => { _selectedDay = (_selectedDay == dayKey) ? null : dayKey; Build(); };
-                col.Children.Add(cell);
+                if (inRange) cell.PointerPressed += (_, _) => { _selectedDay = (_selectedDay == dayKey) ? null : dayKey; Build(); };
+                colSp.Children.Add(cell);
             }
-            weeks.Children.Add(col);
+            weeks.Children.Add(colSp);
         }
         var scroller = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = weeks };
         body.Children.Add(scroller);
@@ -240,13 +236,13 @@ public sealed class AnalyticsWindow : Window
         return outer;
     }
 
-    FrameworkElement Legend()
+    Control Legend()
     {
         var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(24, 8, 0, 0) };
-        sp.Children.Add(new TextBlock { Text = L.Tr("少", "Less"), FontSize = 10, Foreground = Theme.Brush(Faint), Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center });
+        sp.Children.Add(new TextBlock { Text = L.Tr("少", "Less"), FontSize = 10, Foreground = Palette.Brush(Faint), Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center });
         for (int l = 0; l < 5; l++)
-            sp.Children.Add(new Border { Width = 11, Height = 11, CornerRadius = new CornerRadius(2.5), Background = Theme.Brush(HeatColor(l, true)), Margin = new Thickness(1, 0, 1, 0) });
-        sp.Children.Add(new TextBlock { Text = L.Tr("多", "More"), FontSize = 10, Foreground = Theme.Brush(Faint), Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+            sp.Children.Add(new Border { Width = 11, Height = 11, CornerRadius = new CornerRadius(2.5), Background = Palette.Brush(HeatColor(l, true)), Margin = new Thickness(1, 0, 1, 0) });
+        sp.Children.Add(new TextBlock { Text = L.Tr("多", "More"), FontSize = 10, Foreground = Palette.Brush(Faint), Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
         return sp;
     }
 
@@ -258,10 +254,10 @@ public sealed class AnalyticsWindow : Window
             + " · " + Money.Approx(s.Cost) + " · " + L.Tr($"{s.MessageCount} 条", $"{s.MessageCount} msgs");
     }
 
-    FrameworkElement DayDetail(DateTime d, DayStat s)
+    Control DayDetail(DateTime d, DayStat s)
     {
         var sp = new StackPanel();
-        sp.Children.Add(new TextBlock { Text = d.ToString("yyyy-MM-dd"), FontSize = 14, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = Theme.Brush(Fg) });
+        sp.Children.Add(new TextBlock { Text = d.ToString("yyyy-MM-dd"), FontSize = 14, FontWeight = FontWeight.SemiBold, Foreground = Palette.Brush(Fg) });
         sp.Children.Add(T(L.Tr($"计费 {TranscriptParser.TokensShort(s.Tokens.Billable)} · 合计 {TranscriptParser.TokensShort(s.Tokens.Total)}",
             $"Billable {TranscriptParser.TokensShort(s.Tokens.Billable)} · Total {TranscriptParser.TokensShort(s.Tokens.Total)}")
             + " · " + Money.Approx(s.Cost) + " · " + L.Tr($"{s.MessageCount} 条", $"{s.MessageCount} msgs"), 12, Dim));
@@ -272,48 +268,54 @@ public sealed class AnalyticsWindow : Window
         return sp;
     }
 
-    // ── 趋势柱状 ──
-    // 连续日期轴:从“数据起始日(夹在所选范围内)”到今天,逐日一根柱(空日画浅色细条),
-    // 而非只画有数据的几天 —— 否则稀疏数据会全挤在最左边、看着像坏掉。
-    FrameworkElement BuildTrend(UsageHistory h)
+    // ── 趋势(自适应聚合) ──
+    // 按所选范围自动选粒度:≤60 天→按日,≤240 天→按周,更长→按月。
+    // 这样长范围里活跃的那个桶是一根又宽又高的柱(可见),而不是 365 根细到看不见的日柱。
+    // 时间正序(左=早,右=今),贴合卡片宽度。
+    Control BuildTrend(UsageHistory h)
     {
         var today = DateTime.Today;
-        DateTime start;
-        if (h.Days.Count > 0)
-        {
-            var firstData = DayKey.ToDate(h.Days.Keys.Min()) ?? today;
-            var rangeStart = _range.StartDate(DateTime.Now);
-            start = (rangeStart is DateTime rs && rs > firstData) ? rs.Date : firstData.Date;
-        }
-        else start = today;
+        DateTime start = _range.StartDate(DateTime.Now)?.Date
+            ?? (h.Days.Count > 0 ? (DayKey.ToDate(h.Days.Keys.Min())?.Date ?? today) : today);
         if (start > today) start = today;
+        int totalDays = (today - start).Days + 1;
 
-        var pts = new List<(DateTime date, double val)>();
-        for (var d = start; d <= today; d = d.AddDays(1))
-            pts.Add((d, h.Days.TryGetValue(DayKey.From(d), out var s) ? s.MetricValue(_metric) : 0));
+        double DayVal(DateTime d) => h.Days.TryGetValue(DayKey.From(d), out var s) ? s.MetricValue(_metric) : 0;
+        double SumRange(DateTime a, DateTime b) { double sum = 0; for (var d = a; d <= b; d = d.AddDays(1)) if (d >= start && d <= today) sum += DayVal(d); return sum; }
 
-        double max = pts.Count > 0 ? Math.Max(1, pts.Max(p => p.val)) : 1;
-        const double barW = 5, gap = 2, height = 140;
+        var buckets = new List<(string label, double val)>();
+        if (totalDays <= 60)
+            for (var d = start; d <= today; d = d.AddDays(1)) buckets.Add((d.ToString("MM-dd"), DayVal(d)));
+        else if (totalDays <= 240)
+            for (var w = StartOfWeek(start); w <= today; w = w.AddDays(7)) buckets.Add(($"{w:MM-dd} +7d", SumRange(w, w.AddDays(6))));
+        else
+            for (var m = new DateTime(start.Year, start.Month, 1); m <= today; m = m.AddMonths(1)) buckets.Add(($"{m:yyyy-MM}", SumRange(m, m.AddMonths(1).AddDays(-1))));
+
+        double max = buckets.Count > 0 ? Math.Max(1, buckets.Max(b => b.val)) : 1;
+        const double height = 140, targetW = 860;
+        double slot = Math.Max(6, targetW / Math.Max(1, buckets.Count));
+        double barW = Math.Max(4, slot * 0.72), gap = Math.Max(2, slot - barW);
+
         var bars = new StackPanel { Orientation = Orientation.Horizontal, Height = height, VerticalAlignment = VerticalAlignment.Bottom };
-        foreach (var p in pts)
+        foreach (var b in buckets)
         {
-            bool has = p.val > 0;
-            double bh = has ? Math.Max(3, p.val / max * (height - 4)) : 2;
+            bool has = b.val > 0;
+            double bh = has ? Math.Max(4, b.val / max * (height - 4)) : 2;
             var bar = new Border
             {
                 Width = barW, Height = bh, Margin = new Thickness(0, 0, gap, 0),
                 CornerRadius = new CornerRadius(2, 2, 0, 0),
-                Background = Theme.Brush(has ? Green : Theme.Argb(0x14, 0xFF, 0xFF, 0xFF)),
+                Background = Palette.Brush(has ? Green : Palette.HeatEmpty),
                 VerticalAlignment = VerticalAlignment.Bottom,
             };
-            ToolTipService.SetToolTip(bar, $"{p.date:yyyy-MM-dd} · " + (_metric == HeatmapMetric.Cost ? Money.Approx(p.val) : TranscriptParser.TokensShort((int)p.val)));
+            ToolTip.SetTip(bar, b.label + " · " + (_metric == HeatmapMetric.Cost ? Money.Approx(b.val) : TranscriptParser.TokensShort((int)b.val)));
             bars.Children.Add(bar);
         }
         return new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Height = height + 8, Content = bars };
     }
 
     // ── 时段打卡 7×24 ──
-    FrameworkElement BuildPunchCard(UsageHistory h)
+    Control BuildPunchCard(UsageHistory h)
     {
         var data = new int[7, 24];
         foreach (var k in h.DayKeysIn(_range))
@@ -327,36 +329,36 @@ public sealed class AnalyticsWindow : Window
         var fmt = CultureInfo.CurrentCulture.DateTimeFormat;
 
         var table = new Grid();
-        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
-        for (int c = 0; c < 24; c++) table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(15) });
-        for (int r = 0; r < 7; r++) table.RowDefinitions.Add(new RowDefinition { Height = new GridLength(15) });
-        table.RowDefinitions.Add(new RowDefinition { Height = new GridLength(14) });
+        table.ColumnDefinitions.Add(new ColumnDefinition(30, GridUnitType.Pixel));
+        for (int c = 0; c < 24; c++) table.ColumnDefinitions.Add(new ColumnDefinition(16, GridUnitType.Pixel));
+        for (int r = 0; r < 7; r++) table.RowDefinitions.Add(new RowDefinition(15, GridUnitType.Pixel));
+        table.RowDefinitions.Add(new RowDefinition(16, GridUnitType.Pixel));
 
         for (int r = 0; r < 7; r++)
         {
-            var lbl = new TextBlock { Text = fmt.AbbreviatedDayNames[r], FontSize = 9, Foreground = Theme.Brush(Faint), VerticalAlignment = VerticalAlignment.Center };
+            var lbl = new TextBlock { Text = fmt.AbbreviatedDayNames[r], FontSize = 9, Foreground = Palette.Brush(Faint), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetRow(lbl, r); Grid.SetColumn(lbl, 0); table.Children.Add(lbl);
             for (int c = 0; c < 24; c++)
             {
                 int v = data[r, c];
                 if (v <= 0) continue;
                 double size = 4 + 9.0 * Math.Sqrt((double)v / max);
-                var dot = new Border
+                var dot = new Ellipse
                 {
-                    Width = size, Height = size, CornerRadius = new CornerRadius(size / 2),
-                    Background = Theme.Brush(Green), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                    Width = size, Height = size,
+                    Fill = Palette.Brush(Green), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                 };
-                ToolTipService.SetToolTip(dot, $"{fmt.AbbreviatedDayNames[r]} {c}:00 · {TranscriptParser.TokensShort(v)}");
+                ToolTip.SetTip(dot, $"{fmt.AbbreviatedDayNames[r]} {c}:00 · {TranscriptParser.TokensShort(v)}");
                 Grid.SetRow(dot, r); Grid.SetColumn(dot, c + 1); table.Children.Add(dot);
             }
         }
+        // 横轴小时刻度:每 4 小时一个,跨多列防裁切(修旧版“横坐标展示不全”)
         for (int c = 0; c < 24; c += 4)
         {
-            var hr = new TextBlock { Text = L.Tr($"{c}时", $"{c}:00"), FontSize = 8, Foreground = Theme.Brush(Faint) };
-            // 标签比单列(15px)宽,跨多列避免“12时/18时”被裁;每 4 小时一个刻度,横轴更完整。
+            var hr = new TextBlock { Text = L.Tr($"{c}时", $"{c}:00"), FontSize = 8, Foreground = Palette.Brush(Faint) };
             Grid.SetRow(hr, 7); Grid.SetColumn(hr, c + 1); Grid.SetColumnSpan(hr, 4); table.Children.Add(hr);
         }
-        return table;
+        return new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = table };
     }
 
     // ── 模型 / 项目 / 缓存 / 连续 ──
@@ -411,30 +413,25 @@ public sealed class AnalyticsWindow : Window
         });
     }
 
-    FrameworkElement BarRow(string label, int value, int max, string trailing)
+    Control BarRow(string label, int value, int max, string trailing)
     {
-        var g = new Grid { Margin = new Thickness(0, 4, 0, 0) };
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(132) });
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(66) });
-        var lbl = new TextBlock { Text = label, FontSize = 12, Foreground = Theme.Brush(Fg), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        var g = new Grid { Margin = new Thickness(0, 4, 0, 0), ColumnDefinitions = new ColumnDefinitions("132,*,66") };
+        var lbl = new TextBlock { Text = label, FontSize = 12, Foreground = Palette.Brush(Fg), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(lbl, 0); g.Children.Add(lbl);
-        var track = new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Theme.Brush(Theme.Argb(0x1A, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Stretch };
-        var bar = new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Theme.Brush(Green), HorizontalAlignment = HorizontalAlignment.Left, Width = Math.Max(2, 190.0 * value / Math.Max(1, max)) };
+        var track = new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Palette.Brush(Palette.SubtleFill), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var bar = new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Palette.Brush(Green), HorizontalAlignment = HorizontalAlignment.Left, Width = Math.Max(2, 190.0 * value / Math.Max(1, max)) };
         var bg = new Grid { VerticalAlignment = VerticalAlignment.Center }; bg.Children.Add(track); bg.Children.Add(bar);
         Grid.SetColumn(bg, 1); g.Children.Add(bg);
-        var tr = new TextBlock { Text = trailing, FontSize = 12, Foreground = Theme.Brush(Dim), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        var tr = new TextBlock { Text = trailing, FontSize = 12, Foreground = Palette.Brush(Dim), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(tr, 2); g.Children.Add(tr);
         return g;
     }
 
-    FrameworkElement InfoRow(string k, string v)
+    Control InfoRow(string k, string v)
     {
-        var g = new Grid { Margin = new Thickness(0, 3, 0, 0) };
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var kt = new TextBlock { Text = k, FontSize = 12, Foreground = Theme.Brush(Dim) };
-        var vt = new TextBlock { Text = v, FontSize = 12, Foreground = Theme.Brush(Fg), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
+        var g = new Grid { Margin = new Thickness(0, 3, 0, 0), ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var kt = new TextBlock { Text = k, FontSize = 12, Foreground = Palette.Brush(Dim) };
+        var vt = new TextBlock { Text = v, FontSize = 12, Foreground = Palette.Brush(Fg), FontWeight = FontWeight.SemiBold };
         Grid.SetColumn(kt, 0); Grid.SetColumn(vt, 1);
         g.Children.Add(kt); g.Children.Add(vt);
         return g;
@@ -446,23 +443,23 @@ public sealed class AnalyticsWindow : Window
     Border Card(string title, Action<StackPanel> fill)
     {
         var sp = new StackPanel();
-        sp.Children.Add(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 13, Foreground = Theme.Brush(Fg), Margin = new Thickness(0, 0, 0, 8) });
+        sp.Children.Add(new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, FontSize = 13, Foreground = Palette.Brush(Fg), Margin = new Thickness(0, 0, 0, 8) });
         fill(sp);
-        return new Border { Background = Theme.Brush(Theme.CardBg), CornerRadius = new CornerRadius(10), Padding = new Thickness(14), Margin = new Thickness(0, 0, 8, 10), Child = sp };
+        return new Border { Background = Palette.Brush(Palette.CardBg), CornerRadius = new CornerRadius(10), Padding = new Thickness(14), Margin = new Thickness(0, 0, 8, 10), Child = sp };
     }
 
     static TextBlock T(string text, double size, Color color, bool bold = false, double top = 0, double bottom = 0) => new()
     {
-        Text = text, FontSize = size, Foreground = Theme.Brush(color), FontFamily = Theme.FontText,
-        FontWeight = bold ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
+        Text = text, FontSize = size, Foreground = Palette.Brush(color), FontFamily = new FontFamily(Palette.FontFamily),
+        FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal,
         TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, top, 0, bottom),
     };
 
-    Border Divider() => new() { Height = 1, Background = Theme.Brush(Theme.Divider), Margin = new Thickness(0, 10, 0, 8) };
+    Border Divider() => new() { Height = 1, Background = Palette.Brush(Palette.Divider), Margin = new Thickness(0, 10, 0, 8) };
 
     Button Btn(string text, Action act)
     {
-        var b = new Button { Content = text, Height = 32, VerticalAlignment = VerticalAlignment.Center };
+        var b = new Button { Content = text, Height = 32, VerticalAlignment = VerticalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
         b.Click += (_, _) => act();
         return b;
     }
@@ -470,12 +467,18 @@ public sealed class AnalyticsWindow : Window
     // ── 导出 ──
     async Task Export(bool json)
     {
-        var picker = new FileSavePicker { SuggestedFileName = "claudenotch-usage" };
-        InitializeWithWindow.Initialize(picker, _hwnd);
-        if (json) picker.FileTypeChoices.Add("JSON", new List<string> { ".json" });
-        else picker.FileTypeChoices.Add("CSV", new List<string> { ".csv" });
-
-        var file = await picker.PickSaveFileAsync();
+        var top = GetTopLevel(this);
+        if (top is null) return;
+        var file = await top.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            SuggestedFileName = "claudenotch-usage",
+            DefaultExtension = json ? "json" : "csv",
+            FileTypeChoices = new[]
+            {
+                json ? new FilePickerFileType("JSON") { Patterns = new[] { "*.json" } }
+                     : new FilePickerFileType("CSV") { Patterns = new[] { "*.csv" } },
+            },
+        });
         if (file is null) return;
 
         string content;
@@ -501,30 +504,10 @@ public sealed class AnalyticsWindow : Window
             }
             content = sb.ToString();
         }
-        try { await FileIO.WriteTextAsync(file, content); } catch { }
+        try { await using var stream = await file.OpenWriteAsync(); await using var w = new StreamWriter(stream); await w.WriteAsync(content); } catch { }
     }
 
     // ── 工具 ──
-    void CenterOnScreen(WindowId id)
-    {
-        var work = DisplayArea.GetFromWindowId(id, DisplayAreaFallback.Primary).WorkArea;
-        var s = _appWindow.Size;
-        _appWindow.Move(new PointInt32(work.X + (work.Width - s.Width) / 2, work.Y + (work.Height - s.Height) / 2));
-    }
-
-    // 自定义标题栏下,系统标题按钮(最小化/关闭)配色随深色:透明底 + 浅色前景。
-    void DarkCaptionButtons()
-    {
-        if (!AppWindowTitleBar.IsCustomizationSupported()) return;
-        var tb = _appWindow.TitleBar;
-        tb.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
-        tb.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
-        tb.ButtonForegroundColor = Microsoft.UI.Colors.White;
-        tb.ButtonInactiveForegroundColor = Theme.TextFaint;
-        tb.ButtonHoverForegroundColor = Microsoft.UI.Colors.White;
-        tb.ButtonHoverBackgroundColor = Theme.Argb(0x22, 0xFF, 0xFF, 0xFF);
-    }
-
     static DateTime StartOfWeek(DateTime d) { int delta = ((int)d.DayOfWeek + 7) % 7; return d.AddDays(-delta); }
 
     static double Percentile(List<double> xs, double p)
@@ -545,9 +528,9 @@ public sealed class AnalyticsWindow : Window
 
     static Color HeatColor(int level, bool inRange)
     {
-        if (!inRange) return Theme.Argb(0, 0, 0, 0);
-        if (level == 0) return Theme.Argb(0x1C, 0xFF, 0xFF, 0xFF);
+        if (!inRange) return Palette.Argb(0, 0, 0, 0);
+        if (level == 0) return Palette.HeatEmpty;
         double[] ops = { 0.30, 0.52, 0.76, 1.0 };
-        return Theme.Argb((byte)(ops[level - 1] * 255), 0x2E, 0xC7, 0x71);
+        return Palette.Argb((byte)(ops[level - 1] * 255), 0x2E, 0xC7, 0x71);
     }
 }

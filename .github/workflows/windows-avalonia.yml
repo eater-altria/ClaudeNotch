@@ -1,0 +1,66 @@
+name: Windows Avalonia build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'windows/ClaudeNotch.Avalonia/**'
+      - 'windows/ClaudeNotch/Core/**'
+      - 'windows/ClaudeNotch.Statusline/**'
+      - '.github/workflows/windows-avalonia.yml'
+    tags:
+      - 'av-v*'
+  pull_request:
+    paths:
+      - 'windows/ClaudeNotch.Avalonia/**'
+      - 'windows/ClaudeNotch/Core/**'
+      - 'windows/ClaudeNotch.Statusline/**'
+      - '.github/workflows/windows-avalonia.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore (win-x64)
+        run: dotnet restore ClaudeNotch.Avalonia/ClaudeNotch.Avalonia.csproj -r win-x64
+
+      - name: Publish (self-contained, win-x64, folder)
+        run: >
+          dotnet publish ClaudeNotch.Avalonia/ClaudeNotch.Avalonia.csproj -c Release -r win-x64
+          --no-restore
+          --self-contained true
+          -p:PublishSingleFile=false
+          -o avalonia-publish
+
+      - name: Publish statusLine helper (NativeAOT console, into same folder)
+        run: dotnet publish ClaudeNotch.Statusline/ClaudeNotch.Statusline.csproj -c Release -r win-x64 -o avalonia-publish
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path avalonia-publish/* -DestinationPath ClaudeNotch-avalonia-x64.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeNotch-avalonia-x64
+          path: windows/ClaudeNotch-avalonia-x64.zip
+          if-no-files-found: error
+
+      - name: Release (on av-v* tag)
+        if: startsWith(github.ref, 'refs/tags/av-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: windows/ClaudeNotch-avalonia-x64.zip

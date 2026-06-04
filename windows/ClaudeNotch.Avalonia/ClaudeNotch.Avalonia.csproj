@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>ClaudeNotch</RootNamespace>
+    <AssemblyName>ClaudeNotch</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <Product>ClaudeNotch</Product>
+    <Version>2.1.1</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.17" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.17" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.17" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.17" Condition="'$(Configuration)' == 'Debug'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 复用 WPF/WinUI 工程的 Core 业务逻辑层(与 UI 框架解耦,零改动链接编译) -->
+    <Compile Include="..\ClaudeNotch\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 托盘图标(复用现有矢量导出的 .ico) → avares://ClaudeNotch/Assets/tray.ico -->
+    <AvaloniaResource Include="..\ClaudeNotch.WinUI\Assets\tray.ico" Link="Assets/tray.ico" />
+  </ItemGroup>
+
+</Project>

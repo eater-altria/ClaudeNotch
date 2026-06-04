@@ -20,6 +20,17 @@
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
 
+    <!--
+      ⚠️ unpackaged + 自包含“能正常启动”的两个关键(缺一即启动闪退,且 CI 编译查不出、只在真机暴露):
+      ① App.xaml(ApplicationDefinition)必须存在 —— 触发 markup 编译器生成 app 的 resources.pri
+         并把框架 themeresources 合并进去。纯代码无 .xaml 时根本不生成 PRI。
+      ② PRI 必须命名为 resources.pri —— 默认是 <AssemblyName>.pri(=ClaudeNotch.pri),
+         而 unpackaged 资源加载器只认 exe 旁的 resources.pri(microsoft-ui-xaml#10856)。
+      二者缺一 → ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml 无法解析
+      → InitializeComponent()/XamlControlsResources COMException 闪退。
+    -->
+    <ProjectPriFileName>resources.pri</ProjectPriFileName>
+
     <!-- 自定义入口 Program.Main:让 statusline 钩子在不起 UI 的情况下快进快出 -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <StartupObject>ClaudeNotch.Program</StartupObject>
@@ -31,7 +42,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <Product>ClaudeNotch</Product>
-    <Version>2.0.0</Version>
+    <Version>2.0.5</Version>
   </PropertyGroup>
 
   <ItemGroup>
