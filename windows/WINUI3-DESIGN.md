@@ -142,15 +142,23 @@
 
 ---
 
-## 7. 待技术底座研究确认的开放项(并行研究中)
+## 7. 技术底座(已研究确认)
 
-这些不影响设计,但影响实现取舍,后台研究代理正在核实(见随后结论):
-1. **自包含 + unpackaged + 单文件** 在 CI 上的可行性与确切 csproj/命令。
-2. **纯代码(无 .xaml)** WinUI 3 的可行度;是否需在代码里 merge `XamlControlsResources`。
-3. **自定义 Main** 拦截 `--statusline` 快退的写法。
-4. **挂件透明度** 的真实能力边界(决定折叠态是圆角卡还是别的)。
-5. **Win2D vs Path/Shapes** 用于环与图表。
-6. `H.NotifyIcon.WinUI` / `AppNotificationManager` 在 unpackaged 自包含下的确认。
+| 项 | 结论 |
+|---|---|
+| 工程类型 | `net8.0-windows10.0.19041.0`,`UseWinUI`,**unpackaged**(`WindowsPackageType=None`)+ **自包含**(`WindowsAppSDKSelfContained=true` + `SelfContained=true`),**仅 x64**(`RuntimeIdentifier=win-x64`,WinUI 3 无 AnyCPU) |
+| 包版本(钉死) | `Microsoft.WindowsAppSDK 1.7.260208002` + `Microsoft.Windows.SDK.BuildTools 10.0.26100.4948` + `H.NotifyIcon.WinUI 2.4.1`(+ 图表阶段再加 `Microsoft.Graphics.Win2D 1.4.0`) |
+| 发布 | CI `dotnet publish -r win-x64 -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true -p:SelfContained=true`;**默认输出文件夹 zip**(最稳),单文件(自解压式,WAS 1.5+ 支持)作为可选第二产物。**无需 dotnet workload**。 |
+| 自定义 Main | `DISABLE_XAML_GENERATED_MAIN` + `StartupObject`;`--statusline` 分支在 `XamlCheckProcessRequirements()`/`ComWrappers`/`Application.Start` **之前**就 `RunHelper(); return`,不起 UI。(实际高频钩子仍走独立 NativeAOT 助手 `ClaudeNotch.Statusline`,原样复用。) |
+| 纯代码 UI | 可行且对 CI-only 更安全。**关键**:`new XamlControlsResources()` 必须在 `OnLaunched`(非构造函数)里 merge,否则 `COMException`;漏了则控件无样式。 |
+| 托盘 | `H.NotifyIcon.WinUI` `TaskbarIcon`,`ContextMenuMode.SecondWindow`,`ForceCreate()`;unpackaged 自包含支持。气泡用 `ShowNotification`。 |
+| 挂件透明度 | **WinUI 3 不支持逐像素透明/真圆窗**(`Window` 是不透明 HWND + DComp)。→ 折叠态确定为**圆角矩形卡 + Acrylic**(§3),不走 layered-window 那条对 CI 不友好的路。 |
+| 窗口 | `OverlappedPresenter`:`IsAlwaysOnTop` / `SetBorderAndTitleBar(false,false)` / `IsResizable=false` / `AppWindow.IsShownInSwitchers=false`;拖拽用 `WM_NCLBUTTONDOWN`(HTCAPTION)。 |
+| 材质 | `SystemBackdrop = new MicaBackdrop()`(**Win11/22000+**,Win10 自动回退纯色)/ `DesktopAcrylicBackdrop()`(**Win10 1809+**,挂件用它);标题栏 `ExtendsContentIntoTitleBar` + `SetTitleBar`。 |
+| 通知 | `AppNotificationManager` 原生 toast,但 **unpackaged 必须有带匹配 AUMID 的开始菜单快捷方式**否则静默失败。→ 无安装器期间**回退用托盘气泡**;后续做安装器再上原生 toast。 |
+| 绘图 | 进度环 = WinUI `Path` + `ArcSegment`(无额外依赖);热力图/柱状/点阵 = Win2D `CanvasControl`(`CanvasPathBuilder.AddArc`,Win2D 无 `DrawArc`)。 |
+
+> **CI-only 最大风险**:① 单文件偶发踩坑(故默认文件夹 zip);② `XamlControlsResources` 时机错误是**运行时**才暴露(CI 编译查不出,需真机冒烟);③ toast 无快捷方式静默失败;④ 包版本漂移(钉死、逐个升)。
 
 ---
 
