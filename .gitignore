@@ -17,6 +17,7 @@ dist/
 windows/winui-publish/
 windows/publish/
 windows/verify-publish/
+windows/avalonia-publish/
 
 # 临时截图 / 草稿
 /1.png
