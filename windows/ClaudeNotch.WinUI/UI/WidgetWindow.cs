@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 using Windows.Graphics;
 using Windows.UI;
@@ -14,8 +15,8 @@ using WinRT.Interop;
 namespace ClaudeNotch.UI;
 
 /// <summary>
-/// 置顶可拖拽的悬浮挂件:折叠球(环=订阅剩余,中心=剩余%) ↔ 展开面板(剩余环组 + 活跃会话 + 操作)。
-/// WinUI 3 无法逐像素透明,故为「圆角(DWM)+ Acrylic」卡片形态。
+/// 置顶可拖拽的悬浮挂件:折叠态为真·圆球(SetWindowRgn 把窗口裁成圆,环=订阅剩余,中心=剩余%)
+/// ↔ 展开面板(剩余环组 + 活跃会话 + 操作)。拖拽用手动 AppWindow.Move(跟随光标)。
 /// </summary>
 public sealed class WidgetWindow : Window
 {
@@ -28,7 +29,8 @@ public sealed class WidgetWindow : Window
 
     bool _expanded;
     bool _ptrDown, _dragged;
-    Point _downPos;
+    POINT _cursorStart;
+    PointInt32 _winStart;
 
     public Action? OpenSettings, OpenAnalytics, RefreshAll, Quit;
 
@@ -76,22 +78,26 @@ public sealed class WidgetWindow : Window
         card.ContextFlyout = BuildMenu();
         // 整个挂件强制深色:让默认按钮(收起/操作行)与深色面板一致,不随系统浅色发白。
         card.RequestedTheme = ElementTheme.Dark;
-        Content = card;
-        // 两段式定尺寸:enqueue 先给个初值;Loaded 时控件默认样式(按钮高度等主题资源)已应用,
-        // 再测一次才准 —— 否则首测低估按钮高度,展开面板底部按钮被裁(实测踩到)。
+        // 两段式定尺寸:Loaded 时控件默认样式(按钮高度等主题资源)已应用,测量才准 ——
+        // 否则首测低估按钮高度,展开面板底部按钮被裁(实测踩到)。订阅须在 Content 赋值前,避免错过。
         card.Loaded += (_, _) => FitToContent(card);
+        Content = card;
         DispatcherQueue.TryEnqueue(() => FitToContent(card));
     }
 
-    // 折叠:圆角球——环弧=剩余容量,中心大数字=剩余%
-    Border BuildOrb()
+    // 折叠:真·圆球(窗口被裁成圆形,见 ApplyShape)——圆盘底 + 环弧=剩余容量 + 中心大数字=剩余%。
+    // 不再是方形圆角卡:返回纯 Grid(无方形 Border 背景/边框),球体由内嵌 Ellipse 充当。
+    const int OrbSize = 76;
+    Grid BuildOrb()
     {
-        var grid = new Grid { Width = 72, Height = 72 };
+        var grid = new Grid { Width = OrbSize, Height = OrbSize };
+        // 球体本体:半透明深色圆盘(叠在 Acrylic 之上,保证中心数字可读)。
+        grid.Children.Add(new Ellipse { Width = OrbSize, Height = OrbSize, Fill = Theme.Brush(Theme.Argb(0xE6, 0x22, 0x22, 0x26)) });
         var head = _usage.Snapshot?.Headline;
         if (head is not null)
         {
             int remain = head.PercentRemaining;
-            grid.Children.Add(new RingControl(72, 6, Theme.ForPercent(head.PercentUsed)) { Percent = remain });
+            grid.Children.Add(new RingControl(OrbSize, 6, Theme.ForPercent(head.PercentUsed)) { Percent = remain });
             var center = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             center.Children.Add(NumberTb(remain.ToString(), 21));
             var sub = Tb(L.Tr("剩余", "left"), 9, Theme.TextDim);
@@ -106,7 +112,7 @@ public sealed class WidgetWindow : Window
             ToolTipService.SetToolTip(grid, WaitingText());
             grid.Children.Add(t);
         }
-        return new Border { CornerRadius = new CornerRadius(16), Background = Theme.Brush(Theme.PillBg), Padding = new Thickness(6), Child = grid };
+        return grid;
     }
 
     // 展开:现代面板——剩余环组 + 活跃会话 + 操作
@@ -270,31 +276,33 @@ public sealed class WidgetWindow : Window
     };
 
     // ── 拖拽 vs 点击 ──
+    // 手动移动:按下记录光标(屏幕物理坐标)与窗口起点;移动时按光标增量实时 AppWindow.Move,
+    // 全程跟随光标、松手即停。不再用 WM_NCLBUTTONDOWN(那条会进系统移动模式,出现“松手才动、再点才停”的错乱)。
     void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
         var pp = e.GetCurrentPoint((UIElement)sender);
         if (!pp.Properties.IsLeftButtonPressed) return;
-        _ptrDown = true; _dragged = false; _downPos = pp.Position;
+        _ptrDown = true; _dragged = false;
+        GetCursorPos(out _cursorStart);
+        _winStart = _appWindow.Position;
+        ((UIElement)sender).CapturePointer(e.Pointer);
     }
 
     void OnPointerMoved(object sender, PointerRoutedEventArgs e)
     {
         if (!_ptrDown) return;
-        var pp = e.GetCurrentPoint((UIElement)sender);
-        if (!pp.Properties.IsLeftButtonPressed) return;
-        var d = pp.Position;
-        if (Math.Abs(d.X - _downPos.X) + Math.Abs(d.Y - _downPos.Y) > 4)
-        {
-            _dragged = true; _ptrDown = false;
-            ReleaseCapture();
-            SendMessage(_hwnd, 0x00A1 /*WM_NCLBUTTONDOWN*/, (IntPtr)2 /*HTCAPTION*/, IntPtr.Zero);
-            SavePosition();
-        }
+        GetCursorPos(out var cur);
+        int dx = cur.X - _cursorStart.X, dy = cur.Y - _cursorStart.Y;
+        if (!_dragged && Math.Abs(dx) + Math.Abs(dy) <= 4) return;  // 小抖动不算拖拽,留给点击
+        _dragged = true;
+        _appWindow.Move(new PointInt32(_winStart.X + dx, _winStart.Y + dy));
     }
 
     void OnPointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        ((UIElement)sender).ReleasePointerCapture(e.Pointer);
         if (_ptrDown && !_dragged) ToggleExpand();
+        else if (_dragged) SavePosition();
         _ptrDown = false; _dragged = false;
     }
 
@@ -321,9 +329,26 @@ public sealed class WidgetWindow : Window
             uint dpi = GetDpiForWindow(_hwnd);
             double scale = dpi > 0 ? dpi / 96.0 : (root.XamlRoot?.RasterizationScale ?? 1.0);
             if (d.Width > 0 && d.Height > 0)
-                _appWindow.ResizeClient(new SizeInt32(
-                    (int)Math.Ceiling(d.Width * scale) + 2,
-                    (int)Math.Ceiling(d.Height * scale) + 2));
+            {
+                // 展开面板留 +3 缓冲防裁切;折叠球不留缓冲,让圆形裁剪正好贴合球体。
+                int pad = _expanded ? 3 : 0;
+                int pw = (int)Math.Ceiling(d.Width * scale) + pad;
+                int ph = (int)Math.Ceiling(d.Height * scale) + pad;
+                _appWindow.ResizeClient(new SizeInt32(pw, ph));
+                ApplyShape(pw, ph);
+            }
+        }
+        catch { }
+    }
+
+    // 折叠态把窗口裁成圆形(真·圆球,无方角);展开态去掉区域,交回 DWM 圆角矩形。
+    void ApplyShape(int w, int h)
+    {
+        try
+        {
+            if (_expanded) { SetWindowRgn(_hwnd, IntPtr.Zero, true); return; }
+            var rgn = CreateEllipticRgn(0, 0, w + 1, h + 1);
+            SetWindowRgn(_hwnd, rgn, true);   // 系统接管该区域句柄,勿再 DeleteObject
         }
         catch { }
     }
@@ -359,7 +384,10 @@ public sealed class WidgetWindow : Window
     }
 
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
-    [DllImport("user32.dll")] static extern bool ReleaseCapture();
-    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
+    [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateEllipticRgn(int x1, int y1, int x2, int y2);
+
+    [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
 }

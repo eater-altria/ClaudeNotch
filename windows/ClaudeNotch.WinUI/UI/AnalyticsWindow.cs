@@ -136,7 +136,7 @@ public sealed class AnalyticsWindow : Window
 
         var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
 
-        var metricBar = new SelectorBar();
+        var metricBar = new SelectorBar { VerticalAlignment = VerticalAlignment.Center };
         foreach (var m in new[] { HeatmapMetric.Billable, HeatmapMetric.Cost, HeatmapMetric.Total })
             metricBar.Items.Add(new SelectorBarItem { Text = m.Label(), Tag = m });
         metricBar.SelectedItem = metricBar.Items[(int)_metric];
@@ -146,7 +146,7 @@ public sealed class AnalyticsWindow : Window
         };
         controls.Children.Add(metricBar);
 
-        var rangeCombo = new ComboBox { MinWidth = 96 };
+        var rangeCombo = new ComboBox { MinWidth = 96, Height = 32, VerticalAlignment = VerticalAlignment.Center };
         foreach (var r in new[] { HistoryRange.M3, HistoryRange.M6, HistoryRange.M12, HistoryRange.All })
             rangeCombo.Items.Add(new ComboBoxItem { Content = r.Label(), Tag = r });
         rangeCombo.SelectedIndex = (int)_range;
@@ -273,21 +273,38 @@ public sealed class AnalyticsWindow : Window
     }
 
     // ── 趋势柱状 ──
+    // 连续日期轴:从“数据起始日(夹在所选范围内)”到今天,逐日一根柱(空日画浅色细条),
+    // 而非只画有数据的几天 —— 否则稀疏数据会全挤在最左边、看着像坏掉。
     FrameworkElement BuildTrend(UsageHistory h)
     {
-        var keys = h.DayKeysIn(_range);
-        var pts = keys.Select(k => (date: DayKey.ToDate(k) ?? DateTime.Today, val: h.Days.TryGetValue(k, out var s) ? s.MetricValue(_metric) : 0)).ToList();
+        var today = DateTime.Today;
+        DateTime start;
+        if (h.Days.Count > 0)
+        {
+            var firstData = DayKey.ToDate(h.Days.Keys.Min()) ?? today;
+            var rangeStart = _range.StartDate(DateTime.Now);
+            start = (rangeStart is DateTime rs && rs > firstData) ? rs.Date : firstData.Date;
+        }
+        else start = today;
+        if (start > today) start = today;
+
+        var pts = new List<(DateTime date, double val)>();
+        for (var d = start; d <= today; d = d.AddDays(1))
+            pts.Add((d, h.Days.TryGetValue(DayKey.From(d), out var s) ? s.MetricValue(_metric) : 0));
+
         double max = pts.Count > 0 ? Math.Max(1, pts.Max(p => p.val)) : 1;
-        const double barW = 4, gap = 1, height = 140;
+        const double barW = 5, gap = 2, height = 140;
         var bars = new StackPanel { Orientation = Orientation.Horizontal, Height = height, VerticalAlignment = VerticalAlignment.Bottom };
         foreach (var p in pts)
         {
-            double bh = Math.Max(1, p.val / max * (height - 4));
+            bool has = p.val > 0;
+            double bh = has ? Math.Max(3, p.val / max * (height - 4)) : 2;
             var bar = new Border
             {
                 Width = barW, Height = bh, Margin = new Thickness(0, 0, gap, 0),
-                CornerRadius = new CornerRadius(1.5, 1.5, 0, 0),
-                Background = Theme.Brush(Green), VerticalAlignment = VerticalAlignment.Bottom,
+                CornerRadius = new CornerRadius(2, 2, 0, 0),
+                Background = Theme.Brush(has ? Green : Theme.Argb(0x14, 0xFF, 0xFF, 0xFF)),
+                VerticalAlignment = VerticalAlignment.Bottom,
             };
             ToolTipService.SetToolTip(bar, $"{p.date:yyyy-MM-dd} · " + (_metric == HeatmapMetric.Cost ? Money.Approx(p.val) : TranscriptParser.TokensShort((int)p.val)));
             bars.Children.Add(bar);
@@ -333,10 +350,11 @@ public sealed class AnalyticsWindow : Window
                 Grid.SetRow(dot, r); Grid.SetColumn(dot, c + 1); table.Children.Add(dot);
             }
         }
-        for (int c = 0; c < 24; c += 6)
+        for (int c = 0; c < 24; c += 4)
         {
             var hr = new TextBlock { Text = L.Tr($"{c}时", $"{c}:00"), FontSize = 8, Foreground = Theme.Brush(Faint) };
-            Grid.SetRow(hr, 7); Grid.SetColumn(hr, c + 1); table.Children.Add(hr);
+            // 标签比单列(15px)宽,跨多列避免“12时/18时”被裁;每 4 小时一个刻度,横轴更完整。
+            Grid.SetRow(hr, 7); Grid.SetColumn(hr, c + 1); Grid.SetColumnSpan(hr, 4); table.Children.Add(hr);
         }
         return table;
     }
@@ -444,7 +462,7 @@ public sealed class AnalyticsWindow : Window
 
     Button Btn(string text, Action act)
     {
-        var b = new Button { Content = text };
+        var b = new Button { Content = text, Height = 32, VerticalAlignment = VerticalAlignment.Center };
         b.Click += (_, _) => act();
         return b;
     }
