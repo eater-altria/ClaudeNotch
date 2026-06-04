@@ -6,6 +6,7 @@ on:
     paths:
       - 'windows/ClaudeNotch.WinUI/**'
       - 'windows/ClaudeNotch/Core/**'
+      - 'windows/ClaudeNotch.Statusline/**'
       - '.github/workflows/windows-winui3.yml'
     tags:
       - 'winui-v*'
@@ -13,6 +14,7 @@ on:
     paths:
       - 'windows/ClaudeNotch.WinUI/**'
       - 'windows/ClaudeNotch/Core/**'
+      - 'windows/ClaudeNotch.Statusline/**'
       - '.github/workflows/windows-winui3.yml'
   workflow_dispatch:
 
@@ -44,6 +46,9 @@ jobs:
           -p:SelfContained=true
           --self-contained true
           -o winui-publish
+
+      - name: Publish statusLine helper (NativeAOT console, into same folder)
+        run: dotnet publish ClaudeNotch.Statusline/ClaudeNotch.Statusline.csproj -c Release -r win-x64 -o winui-publish
 
       - name: Zip
         shell: pwsh
