@@ -25,20 +25,34 @@ public static class Program
             return 0;
         }
 
+        // 兜底:任何线程的未捕获异常都落盘，便于排查闪退。
+        AppDomain.CurrentDomain.UnhandledException += (_, ev) =>
+        {
+            if (ev.ExceptionObject is Exception ex) CrashLog.Write("AppDomain.UnhandledException", ex);
+        };
+
         // ── 单实例 ──
         using var mutex = new Mutex(initiallyOwned: true, @"Local\ClaudeNotch.SingleInstance.Mutex", out bool isNew);
         if (!isNew) return 0;
 
         // ── 正常 UI 路径(镜像 WinUI 生成的 Program)──
-        XamlCheckProcessRequirements();
-        global::WinRT.ComWrappersSupport.InitializeComWrappers();
-
-        Application.Start(p =>
+        try
         {
-            var ctx = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
-            SynchronizationContext.SetSynchronizationContext(ctx);
-            new App();
-        });
+            XamlCheckProcessRequirements();
+            global::WinRT.ComWrappersSupport.InitializeComWrappers();
+
+            Application.Start(p =>
+            {
+                var ctx = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
+                SynchronizationContext.SetSynchronizationContext(ctx);
+                new App();
+            });
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write("Program.Main", ex);
+            throw;
+        }
 
         return 0;
     }

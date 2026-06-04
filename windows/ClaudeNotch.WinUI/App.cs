@@ -28,6 +28,15 @@ public sealed class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        try { OnLaunchedCore(); }
+        catch (Exception ex) { CrashLog.Write("App.OnLaunched", ex); throw; }
+    }
+
+    void OnLaunchedCore()
+    {
+        // WinUI 线程未捕获异常也落盘。
+        UnhandledException += (_, e) => CrashLog.Write("App.UnhandledException", e.Exception);
+
         // 控件默认样式(Fluent)。必须在 App 完全构造后加载。
         Resources.MergedDictionaries.Add(new XamlControlsResources());
 
