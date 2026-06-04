@@ -16,8 +16,11 @@ public sealed class App : Application
     AppSettings _settings = null!;
     UsageStore _usage = null!;
     SessionStore _sessions = null!;
+    ModelPriceStore _prices = null!;
+    ExchangeRateStore _rates = null!;
     Tray _tray = null!;
     WidgetWindow? _widget;
+    SettingsWindow? _settingsWin;
 
     public App() { }
 
@@ -33,15 +36,15 @@ public sealed class App : Application
 
         _usage = new UsageStore();
         _sessions = new SessionStore();
-
-        _usage.QuotaWarn = Math.Min(_settings.QuotaWarn, _settings.QuotaCritical);
-        _usage.QuotaCritical = Math.Max(_settings.QuotaWarn, _settings.QuotaCritical);
-        _usage.NotificationsEnabled = _settings.NotificationsEnabled;
-        _sessions.ContextThreshold = _settings.ContextThreshold;
-        _sessions.NotificationsEnabled = _settings.NotificationsEnabled;
+        _prices = new ModelPriceStore();
+        _rates = new ExchangeRateStore();
+        _rates.Bootstrap();
+        _prices.Bootstrap();
 
         _tray = new Tray
         {
+            OpenSettings = ShowSettings,
+            OpenAnalytics = () => _tray.ShowBalloon("ClaudeNotch", L.Tr("数据统计页开发中", "Analytics page coming soon")),
             RefreshAll = RefreshAll,
             ToggleWidget = ToggleWidget,
             Quit = () => Exit(),
@@ -50,12 +53,35 @@ public sealed class App : Application
         Notifier.Show = (t, b) => _ui.TryEnqueue(() => _tray.ShowBalloon(t, b));
         _usage.Changed += () => _ui.TryEnqueue(UpdateTrayTooltip);
 
-        if (_settings.ManageStatusline) StatuslineHook.EnsureInstalled();
-
         _usage.Start();
         _sessions.Start();
 
+        ApplySettings();
+    }
+
+    void ApplySettings()
+    {
+        _usage.QuotaWarn = Math.Min(_settings.QuotaWarn, _settings.QuotaCritical);
+        _usage.QuotaCritical = Math.Max(_settings.QuotaWarn, _settings.QuotaCritical);
+        _usage.NotificationsEnabled = _settings.NotificationsEnabled;
+        _sessions.ContextThreshold = _settings.ContextThreshold;
+        _sessions.NotificationsEnabled = _settings.NotificationsEnabled;
+
+        if (_settings.ManageStatusline) StatuslineHook.EnsureInstalled();
+        else StatuslineHook.Uninstall(purgeData: false);
+
         if (_settings.WidgetEnabled) ShowWidget();
+        else if (_widget is not null) _widget.AppWindow.Hide();
+    }
+
+    void ShowSettings()
+    {
+        if (_settingsWin is null)
+        {
+            _settingsWin = new SettingsWindow(_settings, _prices, _rates) { OnSettingsApplied = ApplySettings };
+            _settingsWin.Closed += (_, _) => _settingsWin = null;
+        }
+        _settingsWin.Activate();
     }
 
     void ShowWidget()
@@ -64,7 +90,7 @@ public sealed class App : Application
         {
             _widget = new WidgetWindow(_usage, _sessions, _settings)
             {
-                OpenSettings = () => _tray.ShowBalloon("ClaudeNotch", L.Tr("设置页开发中", "Settings page coming soon")),
+                OpenSettings = ShowSettings,
                 OpenAnalytics = () => _tray.ShowBalloon("ClaudeNotch", L.Tr("数据统计页开发中", "Analytics page coming soon")),
                 RefreshAll = RefreshAll,
                 Quit = () => Exit(),
