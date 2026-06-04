@@ -60,7 +60,16 @@ public sealed class App : Application
 
     void ShowWidget()
     {
-        _widget ??= new WidgetWindow(_usage, _sessions, _settings);
+        if (_widget is null)
+        {
+            _widget = new WidgetWindow(_usage, _sessions, _settings)
+            {
+                OpenSettings = () => _tray.ShowBalloon("ClaudeNotch", L.Tr("设置页开发中", "Settings page coming soon")),
+                OpenAnalytics = () => _tray.ShowBalloon("ClaudeNotch", L.Tr("数据统计页开发中", "Analytics page coming soon")),
+                RefreshAll = RefreshAll,
+                Quit = () => Exit(),
+            };
+        }
         _widget.Activate();
     }
 

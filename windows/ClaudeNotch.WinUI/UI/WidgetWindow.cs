@@ -6,14 +6,16 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.Foundation;
 using Windows.Graphics;
+using Windows.UI;
 using WinRT.Interop;
 
 namespace ClaudeNotch.UI;
 
 /// <summary>
-/// 置顶可拖拽的悬浮挂件(替代 macOS 刘海)。WinUI 3 无法做逐像素透明/真圆窗,
-/// 故采用「圆角(DWM)+ Acrylic 背景」的卡片形态。P1 为最小骨架,完整内容见 P3。
+/// 置顶可拖拽的悬浮挂件:折叠球(环=订阅剩余,中心=剩余%) ↔ 展开面板(剩余环组 + 活跃会话 + 操作)。
+/// WinUI 3 无法逐像素透明,故为「圆角(DWM)+ Acrylic」卡片形态。
 /// </summary>
 public sealed class WidgetWindow : Window
 {
@@ -22,10 +24,18 @@ public sealed class WidgetWindow : Window
     readonly AppSettings _settings;
     readonly IntPtr _hwnd;
     readonly AppWindow _appWindow;
+    readonly DispatcherTimer _tick;
+
+    bool _expanded;
+    bool _ptrDown, _dragged;
+    Point _downPos;
+
+    public Action? OpenSettings, OpenAnalytics, RefreshAll, Quit;
 
     public WidgetWindow(UsageStore usage, SessionStore sessions, AppSettings settings)
     {
         _usage = usage; _sessions = sessions; _settings = settings;
+        _expanded = settings.WidgetExpanded;
 
         Title = "ClaudeNotch";
         SystemBackdrop = new DesktopAcrylicBackdrop();
@@ -42,61 +52,281 @@ public sealed class WidgetWindow : Window
         p.SetBorderAndTitleBar(hasBorder: false, hasTitleBar: false);
         _appWindow.SetPresenter(p);
         _appWindow.IsShownInSwitchers = false;
-        _appWindow.Resize(new SizeInt32(220, 96));
-
         RoundCorners();
-        BuildContent();
+
+        _usage.Changed += () => DispatcherQueue.TryEnqueue(Rebuild);
+        _sessions.Changed += () => DispatcherQueue.TryEnqueue(Rebuild);
+        L.Changed += () => DispatcherQueue.TryEnqueue(Rebuild);
+
+        _tick = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        _tick.Tick += (_, _) => Rebuild();
+        _tick.Start();
+
+        Rebuild();
         RestorePosition(id);
     }
 
-    void BuildContent()
+    // ── 内容构建 ──
+    void Rebuild()
     {
-        var root = new Grid { Padding = new Thickness(14) };
-        root.PointerPressed += OnDrag;
+        FrameworkElement card = _expanded ? BuildPanel() : BuildOrb();
+        card.PointerPressed += OnPointerPressed;
+        card.PointerMoved += OnPointerMoved;
+        card.PointerReleased += OnPointerReleased;
+        card.ContextFlyout = BuildMenu();
+        Content = card;
+        DispatcherQueue.TryEnqueue(() => FitToContent(card));
+    }
 
-        var stack = new StackPanel
+    // 折叠:圆角球——环弧=剩余容量,中心大数字=剩余%
+    Border BuildOrb()
+    {
+        var grid = new Grid { Width = 72, Height = 72 };
+        var head = _usage.Snapshot?.Headline;
+        if (head is not null)
         {
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Spacing = 2,
+            int remain = head.PercentRemaining;
+            grid.Children.Add(new RingControl(72, 6, Theme.ForPercent(head.PercentUsed)) { Percent = remain });
+            var center = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            center.Children.Add(NumberTb(remain.ToString(), 21));
+            var sub = Tb(L.Tr("剩余", "left"), 9, Theme.TextDim);
+            sub.HorizontalAlignment = HorizontalAlignment.Center; sub.Margin = new Thickness(0, -2, 0, 0);
+            center.Children.Add(sub);
+            grid.Children.Add(center);
+        }
+        else
+        {
+            var t = Tb(_usage.State == UsageState.Waiting ? "…" : "·", 22, Theme.TextDim);
+            t.HorizontalAlignment = HorizontalAlignment.Center; t.VerticalAlignment = VerticalAlignment.Center;
+            ToolTipService.SetToolTip(grid, WaitingText());
+            grid.Children.Add(t);
+        }
+        return new Border { CornerRadius = new CornerRadius(16), Background = Theme.Brush(Theme.PillBg), Padding = new Thickness(6), Child = grid };
+    }
+
+    // 展开:现代面板——剩余环组 + 活跃会话 + 操作
+    Border BuildPanel()
+    {
+        var content = new StackPanel { Width = 312 };
+
+        // 标题行
+        var header = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var title = Tb("ClaudeNotch", 13, Theme.Text, true);
+        Grid.SetColumn(title, 0); header.Children.Add(title);
+        var collapse = new Button
+        {
+            Content = new FontIcon { Glyph = "", FontSize = 12 },
+            Background = Theme.Brush(Theme.Argb(0, 0, 0, 0)),
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(6, 2, 6, 2),
         };
-        stack.Children.Add(new TextBlock
+        collapse.Click += (_, _) => ToggleExpand();
+        Grid.SetColumn(collapse, 1); header.Children.Add(collapse);
+        content.Children.Add(header);
+
+        var snap = _usage.Snapshot;
+        if (snap is not null && snap.AllMetrics.Count > 0)
         {
-            Text = "ClaudeNotch",
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            HorizontalAlignment = HorizontalAlignment.Center,
-        });
-        stack.Children.Add(new TextBlock
+            var rings = new Grid { Margin = new Thickness(0, 2, 0, 4) };
+            for (int i = 0; i < snap.AllMetrics.Count; i++)
+                rings.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            int col = 0;
+            foreach (var m in snap.AllMetrics)
+            {
+                var cell = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+                cell.Children.Add(RingWithText(m.PercentRemaining, 58, 6, Theme.ForPercent(m.PercentUsed), $"{m.PercentRemaining}%", 17, L.Tr("剩余", "left")));
+                cell.Children.Add(Center(Tb(ShortMetricLabel(m), 11, Theme.TextDim)));
+                cell.Children.Add(Center(Tb(m.ResetDisplay, 10, Theme.TextFaint)));
+                Grid.SetColumn(cell, col++); rings.Children.Add(cell);
+            }
+            content.Children.Add(rings);
+
+            if (snap.OfficialCostUSD is double oc)
+                content.Children.Add(Center(Tb(L.Tr("最近会话官方花费 ", "Latest session cost ") + Money.Format(oc), 11, Theme.TextDim)));
+        }
+        else content.Children.Add(Center(Tb(WaitingText(), 12, Theme.TextDim)));
+
+        content.Children.Add(Divider());
+        content.Children.Add(Tb(L.Tr("活跃会话", "Active sessions"), 11, Theme.TextDim, true));
+        var sessions = _sessions.Sessions;
+        if (sessions.Count == 0)
+            content.Children.Add(Tb(L.Tr("无运行中的会话", "No running sessions"), 11, Theme.TextFaint));
+        else
+            foreach (var ses in sessions.Take(6))
+                content.Children.Add(SessionRow(ses));
+
+        content.Children.Add(Divider());
+        var actions = new StackPanel { Orientation = Orientation.Horizontal };
+        actions.Children.Add(Pill(L.Tr("数据统计", "Analytics"), () => OpenAnalytics?.Invoke()));
+        actions.Children.Add(Pill(L.Tr("设置", "Settings"), () => OpenSettings?.Invoke()));
+        actions.Children.Add(Pill(L.Tr("刷新", "Refresh"), () => RefreshAll?.Invoke()));
+        content.Children.Add(actions);
+
+        return new Border { CornerRadius = new CornerRadius(12), Background = Theme.Brush(Theme.PanelBg), Padding = new Thickness(16, 14, 16, 14), Child = content };
+    }
+
+    UIElement SessionRow(SessionInfo s)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 5, 0, 0) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var ring = RingWithText(s.ContextPercent, 30, 4, Theme.ContextColor(s.ContextPercent), $"{s.ContextPercent}", 10, null);
+        Grid.SetColumn(ring, 0); grid.Children.Add(ring);
+
+        var mid = new StackPanel { Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        var titleText = s.GitBranch is null ? s.ProjectName : $"{s.ProjectName} · {s.GitBranch}";
+        mid.Children.Add(Tb(titleText, 12, Theme.Text, true));
+        mid.Children.Add(Tb($"{s.ModelShort} · {Money.Approx(s.CostUSD)}", 10, Theme.TextDim));
+        Grid.SetColumn(mid, 1); grid.Children.Add(mid);
+
+        var ctx = Tb(TranscriptParser.TokensShort(s.ContextTokens), 10, Theme.TextDim);
+        Grid.SetColumn(ctx, 2); grid.Children.Add(ctx);
+        return grid;
+    }
+
+    Grid RingWithText(int arcPercent, double diameter, double thickness, Color color, string centerText, double centerSize, string? sub)
+    {
+        var g = new Grid { Width = diameter, Height = diameter, Margin = new Thickness(4, 0, 4, 2) };
+        g.Children.Add(new RingControl(diameter, thickness, color) { Percent = arcPercent });
+        var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        stack.Children.Add(NumberTb(centerText, centerSize));
+        if (sub is not null)
         {
-            Text = L.Tr("等待数据…", "Waiting…"),
-            Opacity = 0.6,
-            FontSize = 12,
-            HorizontalAlignment = HorizontalAlignment.Center,
-        });
-        root.Children.Add(stack);
-        Content = root;
+            var t = new TextBlock { Text = sub, FontSize = 8, Foreground = Theme.Brush(Theme.TextFaint), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, -2, 0, 0) };
+            stack.Children.Add(t);
+        }
+        g.Children.Add(stack);
+        return g;
+    }
+
+    // ── 工厂 ──
+    TextBlock Tb(string text, double size, Color color, bool bold = false) => new()
+    {
+        Text = text,
+        FontSize = size,
+        FontFamily = Theme.FontText,
+        Foreground = Theme.Brush(color),
+        FontWeight = bold ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
+        VerticalAlignment = VerticalAlignment.Center,
+    };
+
+    TextBlock NumberTb(string text, double size) => new()
+    {
+        Text = text,
+        FontSize = size,
+        FontFamily = Theme.Font,
+        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        Foreground = Theme.Brush(Theme.Text),
+        HorizontalAlignment = HorizontalAlignment.Center,
+    };
+
+    static FrameworkElement Center(FrameworkElement e) { e.HorizontalAlignment = HorizontalAlignment.Center; return e; }
+
+    Border Divider() => new() { Height = 1, Background = Theme.Brush(Theme.Divider), Margin = new Thickness(0, 9, 0, 7) };
+
+    Button Pill(string text, Action act)
+    {
+        var b = new Button { Content = text, FontSize = 12, Margin = new Thickness(0, 0, 6, 0) };
+        b.Click += (_, _) => act();
+        return b;
+    }
+
+    MenuFlyout BuildMenu()
+    {
+        var menu = new MenuFlyout();
+        MenuFlyoutItem Item(string text, Action? act)
+        {
+            var mi = new MenuFlyoutItem { Text = text };
+            mi.Click += (_, _) => act?.Invoke();
+            return mi;
+        }
+        menu.Items.Add(Item(L.Tr("数据统计…", "Analytics…"), () => OpenAnalytics?.Invoke()));
+        menu.Items.Add(Item(L.Tr("设置…", "Settings…"), () => OpenSettings?.Invoke()));
+        menu.Items.Add(Item(L.Tr("立即刷新", "Refresh Now"), () => RefreshAll?.Invoke()));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(Item(L.Tr("退出", "Quit"), () => Quit?.Invoke()));
+        return menu;
+    }
+
+    string WaitingText() => _usage.State == UsageState.Waiting
+        ? L.Tr("等待数据 · 在终端跑一次 claude", "Waiting · run claude once in a terminal")
+        : L.Tr("加载中…", "Loading…");
+
+    static string ShortMetricLabel(UsageMetric m) => m.Id switch
+    {
+        "session" => L.Tr("会话", "Session"),
+        "weeklyAll" => L.Tr("周·全部", "Wk·All"),
+        "weeklySonnet" => "Wk·Sonnet",
+        _ => m.Title,
+    };
+
+    // ── 拖拽 vs 点击 ──
+    void OnPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var pp = e.GetCurrentPoint((UIElement)sender);
+        if (!pp.Properties.IsLeftButtonPressed) return;
+        _ptrDown = true; _dragged = false; _downPos = pp.Position;
+    }
+
+    void OnPointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_ptrDown) return;
+        var pp = e.GetCurrentPoint((UIElement)sender);
+        if (!pp.Properties.IsLeftButtonPressed) return;
+        var d = pp.Position;
+        if (Math.Abs(d.X - _downPos.X) + Math.Abs(d.Y - _downPos.Y) > 4)
+        {
+            _dragged = true; _ptrDown = false;
+            ReleaseCapture();
+            SendMessage(_hwnd, 0x00A1 /*WM_NCLBUTTONDOWN*/, (IntPtr)2 /*HTCAPTION*/, IntPtr.Zero);
+            SavePosition();
+        }
+    }
+
+    void OnPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (_ptrDown && !_dragged) ToggleExpand();
+        _ptrDown = false; _dragged = false;
+    }
+
+    void ToggleExpand()
+    {
+        _expanded = !_expanded;
+        _settings.WidgetExpanded = _expanded;
+        _settings.Save();
+        Rebuild();
+    }
+
+    // ── 尺寸 / 位置 ──
+    void FitToContent(FrameworkElement root)
+    {
+        try
+        {
+            root.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            var d = root.DesiredSize;
+            double scale = root.XamlRoot?.RasterizationScale ?? 1.0;
+            if (d.Width > 0 && d.Height > 0)
+                _appWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(d.Width * scale), (int)Math.Ceiling(d.Height * scale)));
+        }
+        catch { }
     }
 
     void RestorePosition(WindowId id)
     {
         var work = DisplayArea.GetFromWindowId(id, DisplayAreaFallback.Primary).WorkArea;
+        var size = _appWindow.Size;
         int x, y;
         if (_settings.WidgetX is double sx && _settings.WidgetY is double sy)
         {
-            x = (int)Math.Clamp(sx, work.X, work.X + work.Width - 220);
-            y = (int)Math.Clamp(sy, work.Y, work.Y + work.Height - 96);
+            x = (int)Math.Clamp(sx, work.X, work.X + work.Width - size.Width);
+            y = (int)Math.Clamp(sy, work.Y, work.Y + work.Height - size.Height);
         }
-        else { x = work.X + work.Width - 220 - 24; y = work.Y + 24; }
+        else { x = work.X + work.Width - size.Width - 24; y = work.Y + 24; }
         _appWindow.Move(new PointInt32(x, y));
-    }
-
-    void OnDrag(object sender, PointerRoutedEventArgs e)
-    {
-        var pt = e.GetCurrentPoint((UIElement)sender);
-        if (!pt.Properties.IsLeftButtonPressed) return;
-        ReleaseCapture();
-        SendMessage(_hwnd, 0x00A1 /*WM_NCLBUTTONDOWN*/, (IntPtr)2 /*HTCAPTION*/, IntPtr.Zero);
-        SavePosition();
     }
 
     void SavePosition()
