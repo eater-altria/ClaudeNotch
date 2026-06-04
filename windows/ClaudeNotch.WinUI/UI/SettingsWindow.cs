@@ -188,7 +188,7 @@ public sealed class SettingsWindow : Window
         Child = content,
     };
 
-    Grid Row(string title, string? desc, UIElement? control)
+    Grid Row(string title, string? desc, FrameworkElement? control)
     {
         var g = new Grid { VerticalAlignment = VerticalAlignment.Center };
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -202,7 +202,8 @@ public sealed class SettingsWindow : Window
 
         if (control is not null)
         {
-            if (control is FrameworkElement fe) { fe.VerticalAlignment = VerticalAlignment.Center; fe.Margin = new Thickness(12, 0, 0, 0); }
+            control.VerticalAlignment = VerticalAlignment.Center;
+            control.Margin = new Thickness(12, 0, 0, 0);
             Grid.SetColumn(control, 1); g.Children.Add(control);
         }
         return g;
@@ -223,7 +224,7 @@ public sealed class SettingsWindow : Window
         var slider = new Slider
         {
             Minimum = min, Maximum = max, Value = value,
-            StepFrequency = 1, SnapsTo = SliderSnapsTo.StepValues,
+            StepFrequency = 1, SnapsTo = Microsoft.UI.Xaml.Controls.Primitives.SliderSnapsTo.StepValues,
             Margin = new Thickness(0, 2, 0, 0),
         };
         slider.ValueChanged += (_, e) => { int v = (int)e.NewValue; label.Text = $"{title}: {v}"; onChange(v); };
