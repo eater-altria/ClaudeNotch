@@ -33,11 +33,11 @@ public static class Program
         XamlCheckProcessRequirements();
         global::WinRT.ComWrappersSupport.InitializeComWrappers();
 
-        Application.Start(_ =>
+        Application.Start(p =>
         {
             var ctx = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
             SynchronizationContext.SetSynchronizationContext(ctx);
-            _ = new App();
+            new App();
         });
 
         return 0;
