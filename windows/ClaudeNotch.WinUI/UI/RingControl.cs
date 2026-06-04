@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 using Windows.UI;
+using Path = Microsoft.UI.Xaml.Shapes.Path;   // 消歧:隐式 using 带入了 System.IO.Path
 
 namespace ClaudeNotch.UI;
 
