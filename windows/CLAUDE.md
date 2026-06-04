@@ -3,6 +3,17 @@
 ClaudeNotch 的 **Windows 原生版**：C# / .NET 8 / WPF（+ WinForms 仅用于托盘 NotifyIcon）。
 与 macOS 版共享同一套数据来源与口径（见根 [`CLAUDE.md`](../CLAUDE.md)），UI 改为**置顶悬浮挂件**（无刘海）。
 
+## 🚧 进行中：迁移到 WinUI 3（`ClaudeNotch.WinUI/`）
+
+为更贴近 Windows 11 原生观感，正把 UI 迁到 **WinUI 3 / Windows App SDK**（设计规范见 [`WINUI3-DESIGN.md`](WINUI3-DESIGN.md)）。
+- **两套并存**：旧 `ClaudeNotch/`（WPF）保留，新 `ClaudeNotch.WinUI/` 独立编译验证（CI：`.github/workflows/windows-winui3.yml`，unpackaged + 自包含 win-x64）。绿了再切默认。
+- **Core 零改动复用**：`ClaudeNotch.WinUI` 链接编译 `ClaudeNotch/Core/**`（与 UI 框架解耦）。
+- **关键取舍**：unpackaged WinUI 3 无法逐像素透明 → 折叠挂件改为「圆角(DWM)+ Acrylic」卡片；设置/统计窗用 Mica + 自定义标题栏；托盘用 `H.NotifyIcon.WinUI`（`MenuFlyout`）；进度环 `Path/ArcSegment`、图表 `Border` 拼；通知暂用托盘气泡（原生 toast 需安装器+AUMID 快捷方式，留待有安装器后）。
+- **statusline**：仍由 NativeAOT 助手 `ClaudeNotch.Statusline.exe`（与主 exe 同目录）承担；WinUI 主 exe 也带 `--statusline` 快退分支兜底。
+- **代码态 UI（无 .xaml）**：沿用纯代码构建；唯一硬性要求是 `XamlControlsResources` 必须在 `App.OnLaunched`（非构造函数）里 merge。
+
+> 迁移完成前，下方 WPF 版的模块地图与说明仍然有效（描述的是 `ClaudeNotch/`）。
+
 ## ⚠️ 本地无 Windows 环境 —— 编译只能走 CI
 
 - 任何改动**推送后由 GitHub Actions（`.github/workflows/windows.yml`，`windows-latest`）编译**，本地不要也无法 `dotnet build`。

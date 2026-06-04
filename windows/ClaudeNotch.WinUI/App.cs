@@ -1,46 +1,48 @@
-using System.Windows;
 using ClaudeNotch.Core;
 using ClaudeNotch.UI;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
 namespace ClaudeNotch;
 
-/// <summary>应用编排：装配 stores、托盘、悬浮挂件，串联设置/统计窗口与生命周期。</summary>
+/// <summary>
+/// 代码态 Application(无 App.xaml)。编排:装配 Core stores、托盘、悬浮挂件。
+/// 注意:XamlControlsResources 必须在 OnLaunched(而非构造函数)里 merge,否则 COMException。
+/// </summary>
 public sealed class App : Application
 {
+    DispatcherQueue _ui = null!;
     AppSettings _settings = null!;
     UsageStore _usage = null!;
     SessionStore _sessions = null!;
-    HistoryStore _history = null!;
     ModelPriceStore _prices = null!;
     ExchangeRateStore _rates = null!;
+    HistoryStore _history = null!;
     Tray _tray = null!;
     WidgetWindow? _widget;
     SettingsWindow? _settingsWin;
     AnalyticsWindow? _analyticsWin;
 
-    protected override void OnStartup(StartupEventArgs e)
-    {
-        base.OnStartup(e);
-        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+    public App() { }
 
-        // 现代 Fluent 2 / Win11 控件样式（深色）：合并后隐式套用到所有标准 WPF 控件与右键菜单，
-        // 一举替换掉默认的 Aero/经典观感。必须在任何窗口构建前完成。
-        Resources.MergedDictionaries.Add(new iNKORE.UI.WPF.Modern.ThemeResources());
-        Resources.MergedDictionaries.Add(new iNKORE.UI.WPF.Modern.Controls.XamlControlsResources());
-        iNKORE.UI.WPF.Modern.ThemeManager.Current.ApplicationTheme = iNKORE.UI.WPF.Modern.ApplicationTheme.Dark;
+    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    {
+        // 控件默认样式(Fluent)。必须在 App 完全构造后加载。
+        Resources.MergedDictionaries.Add(new XamlControlsResources());
+
+        _ui = DispatcherQueue.GetForCurrentThread();
 
         _settings = AppSettings.Load();
         L.Init(_settings.Lang);
 
         _usage = new UsageStore();
         _sessions = new SessionStore();
-        _history = new HistoryStore();
         _prices = new ModelPriceStore();
         _rates = new ExchangeRateStore();
-
+        _history = new HistoryStore();
         _rates.Bootstrap();
         _prices.Bootstrap();
-        ApplySettings();
 
         _tray = new Tray
         {
@@ -48,24 +50,16 @@ public sealed class App : Application
             OpenAnalytics = ShowAnalytics,
             RefreshAll = RefreshAll,
             ToggleWidget = ToggleWidget,
-            Quit = () => Shutdown(),
+            Quit = () => Exit(),
         };
-        Notifier.Show = (t, b) => Dispatcher.BeginInvoke(() => _tray.ShowBalloon(t, b));
 
-        _usage.Changed += () => Dispatcher.BeginInvoke(UpdateTrayTooltip);
+        Notifier.Show = (t, b) => _ui.TryEnqueue(() => _tray.ShowBalloon(t, b));
+        _usage.Changed += () => _ui.TryEnqueue(UpdateTrayTooltip);
 
         _usage.Start();
         _sessions.Start();
 
-        if (_settings.ManageStatusline) StatuslineHook.EnsureInstalled();
-
-        if (_settings.WidgetEnabled) ShowWidget();
-
-        Exit += (_, _) =>
-        {
-            try { if (_settings.ManageStatusline) StatuslineHook.Uninstall(purgeData: false); } catch { }
-            _tray.Dispose();
-        };
+        ApplySettings();
     }
 
     void ApplySettings()
@@ -80,7 +74,28 @@ public sealed class App : Application
         else StatuslineHook.Uninstall(purgeData: false);
 
         if (_settings.WidgetEnabled) ShowWidget();
-        else { _widget?.Close(); _widget = null; }
+        else if (_widget is not null) _widget.AppWindow.Hide();
+    }
+
+    void ShowSettings()
+    {
+        if (_settingsWin is null)
+        {
+            _settingsWin = new SettingsWindow(_settings, _prices, _rates) { OnSettingsApplied = ApplySettings };
+            _settingsWin.Closed += (_, _) => _settingsWin = null;
+        }
+        _settingsWin.Activate();
+    }
+
+    void ShowAnalytics()
+    {
+        if (_analyticsWin is null)
+        {
+            _analyticsWin = new AnalyticsWindow(_history);
+            _analyticsWin.Closed += (_, _) => _analyticsWin = null;
+        }
+        _analyticsWin.Activate();
+        _history.RefreshIfNeeded();
     }
 
     void ShowWidget()
@@ -92,41 +107,16 @@ public sealed class App : Application
                 OpenSettings = ShowSettings,
                 OpenAnalytics = ShowAnalytics,
                 RefreshAll = RefreshAll,
-                Quit = () => Shutdown(),
+                Quit = () => Exit(),
             };
-            _widget.Closed += (_, _) => _widget = null;
         }
-        _widget.Show();
         _widget.Activate();
     }
 
     void ToggleWidget()
     {
-        if (_widget is { IsVisible: true }) { _widget.Hide(); }
+        if (_widget is { Visible: true }) _widget.AppWindow.Hide();
         else ShowWidget();
-    }
-
-    void ShowSettings()
-    {
-        if (_settingsWin is null)
-        {
-            _settingsWin = new SettingsWindow(_settings, _prices, _rates) { OnSettingsApplied = ApplySettings };
-            _settingsWin.Closed += (_, _) => _settingsWin = null;
-        }
-        _settingsWin.Show();
-        _settingsWin.Activate();
-    }
-
-    void ShowAnalytics()
-    {
-        if (_analyticsWin is null)
-        {
-            _analyticsWin = new AnalyticsWindow(_history);
-            _analyticsWin.Closed += (_, _) => _analyticsWin = null;
-        }
-        _analyticsWin.Show();
-        _analyticsWin.Activate();
-        _history.RefreshIfNeeded();
     }
 
     void RefreshAll() { _usage.Refresh(); _sessions.Refresh(); }

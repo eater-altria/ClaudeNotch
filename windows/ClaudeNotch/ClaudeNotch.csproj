@@ -30,6 +30,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 现代 Fluent 2 / Win11 控件样式（ModernWpf 的继任者）：在 App 启动时以代码合并其 ResourceDictionary，
+         隐式重塑所有标准 WPF 控件 + 右键菜单的观感。预编译 NuGet，不触发本地 XAML codegen。 -->
+    <PackageReference Include="iNKORE.UI.WPF.Modern" Version="0.10.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 内置 LiteLLM 价表快照（与 macOS 版同一份，构建时从 ../../macos 拷入由 CI 处理，亦可手动放置） -->
     <None Include="Assets\litellm_prices.json" Condition="Exists('Assets\litellm_prices.json')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

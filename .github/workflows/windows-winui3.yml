@@ -1,0 +1,62 @@
+name: Windows WinUI3 build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'windows/ClaudeNotch.WinUI/**'
+      - 'windows/ClaudeNotch/Core/**'
+      - 'windows/ClaudeNotch.Statusline/**'
+      - '.github/workflows/windows-winui3.yml'
+    tags:
+      - 'winui-v*'
+  pull_request:
+    paths:
+      - 'windows/ClaudeNotch.WinUI/**'
+      - 'windows/ClaudeNotch/Core/**'
+      - 'windows/ClaudeNotch.Statusline/**'
+      - '.github/workflows/windows-winui3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore (win-x64)
+        run: dotnet restore ClaudeNotch.WinUI/ClaudeNotch.WinUI.csproj -r win-x64
+
+      - name: Publish (self-contained, unpackaged, win-x64)
+        run: >
+          dotnet publish ClaudeNotch.WinUI/ClaudeNotch.WinUI.csproj -c Release -r win-x64
+          --no-restore
+          -p:WindowsPackageType=None
+          -p:WindowsAppSDKSelfContained=true
+          -p:SelfContained=true
+          --self-contained true
+          -o winui-publish
+
+      - name: Publish statusLine helper (NativeAOT console, into same folder)
+        run: dotnet publish ClaudeNotch.Statusline/ClaudeNotch.Statusline.csproj -c Release -r win-x64 -o winui-publish
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path winui-publish/* -DestinationPath ClaudeNotch-winui3-x64.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeNotch-winui3-x64
+          path: windows/ClaudeNotch-winui3-x64.zip
+          if-no-files-found: error

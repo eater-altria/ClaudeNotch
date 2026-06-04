@@ -42,6 +42,7 @@ public sealed class Tray : IDisposable
         menu.Items.Add(Item(L.Tr("立即刷新", "Refresh Now"), () => RefreshAll?.Invoke()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(Item(L.Tr("退出", "Quit"), () => Quit?.Invoke()));
+        DarkMenu.Apply(menu);
         _icon.ContextMenuStrip = menu;
     }
 
