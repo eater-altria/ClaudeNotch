@@ -77,6 +77,9 @@ public sealed class WidgetWindow : Window
         // 整个挂件强制深色:让默认按钮(收起/操作行)与深色面板一致,不随系统浅色发白。
         card.RequestedTheme = ElementTheme.Dark;
         Content = card;
+        // 两段式定尺寸:enqueue 先给个初值;Loaded 时控件默认样式(按钮高度等主题资源)已应用,
+        // 再测一次才准 —— 否则首测低估按钮高度,展开面板底部按钮被裁(实测踩到)。
+        card.Loaded += (_, _) => FitToContent(card);
         DispatcherQueue.TryEnqueue(() => FitToContent(card));
     }
 
@@ -308,15 +311,19 @@ public sealed class WidgetWindow : Window
     {
         try
         {
+            root.UpdateLayout();
             root.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             var d = root.DesiredSize;
             // ResizeClient 收物理像素,DesiredSize 是 DIP → 必须按窗口 DPI 缩放。
             // 原先用 XamlRoot.RasterizationScale,首帧 XamlRoot 可能为 null 退化成 1.0,
-            // 高 DPI(125%/150%)下窗口被算小 → 底部按钮被裁。改用 GetDpiForWindow,稳定可靠。
+            // 高 DPI(125%/150%)下窗口被算小。改用 GetDpiForWindow,稳定可靠。
+            // 末尾 +2px 缓冲,吸收取整/子像素误差,避免边缘 1~2px 裁切。
             uint dpi = GetDpiForWindow(_hwnd);
             double scale = dpi > 0 ? dpi / 96.0 : (root.XamlRoot?.RasterizationScale ?? 1.0);
             if (d.Width > 0 && d.Height > 0)
-                _appWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(d.Width * scale), (int)Math.Ceiling(d.Height * scale)));
+                _appWindow.ResizeClient(new SizeInt32(
+                    (int)Math.Ceiling(d.Width * scale) + 2,
+                    (int)Math.Ceiling(d.Height * scale) + 2));
         }
         catch { }
     }
