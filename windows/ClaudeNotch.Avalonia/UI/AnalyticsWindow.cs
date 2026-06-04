@@ -267,31 +267,39 @@ public sealed class AnalyticsWindow : Window
         return sp;
     }
 
-    // ── 趋势(连续日轴) ──
+    // ── 趋势(自适应聚合) ──
+    // 按所选范围自动选粒度:≤60 天→按日,≤240 天→按周,更长→按月。
+    // 这样长范围里活跃的那个桶是一根又宽又高的柱(可见),而不是 365 根细到看不见的日柱。
+    // 时间正序(左=早,右=今),贴合卡片宽度。
     Control BuildTrend(UsageHistory h)
     {
         var today = DateTime.Today;
-        DateTime start;
-        if (h.Days.Count > 0)
-        {
-            var firstData = DayKey.ToDate(h.Days.Keys.Min()) ?? today;
-            var rangeStart = _range.StartDate(DateTime.Now);
-            start = (rangeStart is DateTime rs && rs > firstData) ? rs.Date : firstData.Date;
-        }
-        else start = today;
+        DateTime start = _range.StartDate(DateTime.Now)?.Date
+            ?? (h.Days.Count > 0 ? (DayKey.ToDate(h.Days.Keys.Min())?.Date ?? today) : today);
         if (start > today) start = today;
+        int totalDays = (today - start).Days + 1;
 
-        var pts = new List<(DateTime date, double val)>();
-        for (var d = start; d <= today; d = d.AddDays(1))
-            pts.Add((d, h.Days.TryGetValue(DayKey.From(d), out var s) ? s.MetricValue(_metric) : 0));
+        double DayVal(DateTime d) => h.Days.TryGetValue(DayKey.From(d), out var s) ? s.MetricValue(_metric) : 0;
+        double SumRange(DateTime a, DateTime b) { double sum = 0; for (var d = a; d <= b; d = d.AddDays(1)) if (d >= start && d <= today) sum += DayVal(d); return sum; }
 
-        double max = pts.Count > 0 ? Math.Max(1, pts.Max(p => p.val)) : 1;
-        const double barW = 5, gap = 2, height = 140;
+        var buckets = new List<(string label, double val)>();
+        if (totalDays <= 60)
+            for (var d = start; d <= today; d = d.AddDays(1)) buckets.Add((d.ToString("MM-dd"), DayVal(d)));
+        else if (totalDays <= 240)
+            for (var w = StartOfWeek(start); w <= today; w = w.AddDays(7)) buckets.Add(($"{w:MM-dd} +7d", SumRange(w, w.AddDays(6))));
+        else
+            for (var m = new DateTime(start.Year, start.Month, 1); m <= today; m = m.AddMonths(1)) buckets.Add(($"{m:yyyy-MM}", SumRange(m, m.AddMonths(1).AddDays(-1))));
+
+        double max = buckets.Count > 0 ? Math.Max(1, buckets.Max(b => b.val)) : 1;
+        const double height = 140, targetW = 860;
+        double slot = Math.Max(6, targetW / Math.Max(1, buckets.Count));
+        double barW = Math.Max(4, slot * 0.72), gap = Math.Max(2, slot - barW);
+
         var bars = new StackPanel { Orientation = Orientation.Horizontal, Height = height, VerticalAlignment = VerticalAlignment.Bottom };
-        foreach (var p in pts)
+        foreach (var b in buckets)
         {
-            bool has = p.val > 0;
-            double bh = has ? Math.Max(3, p.val / max * (height - 4)) : 2;
+            bool has = b.val > 0;
+            double bh = has ? Math.Max(4, b.val / max * (height - 4)) : 2;
             var bar = new Border
             {
                 Width = barW, Height = bh, Margin = new Thickness(0, 0, gap, 0),
@@ -299,7 +307,7 @@ public sealed class AnalyticsWindow : Window
                 Background = Palette.Brush(has ? Green : Palette.Argb(0x14, 0xFF, 0xFF, 0xFF)),
                 VerticalAlignment = VerticalAlignment.Bottom,
             };
-            ToolTip.SetTip(bar, $"{p.date:yyyy-MM-dd} · " + (_metric == HeatmapMetric.Cost ? Money.Approx(p.val) : TranscriptParser.TokensShort((int)p.val)));
+            ToolTip.SetTip(bar, b.label + " · " + (_metric == HeatmapMetric.Cost ? Money.Approx(b.val) : TranscriptParser.TokensShort((int)b.val)));
             bars.Children.Add(bar);
         }
         return new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Height = height + 8, Content = bars };
