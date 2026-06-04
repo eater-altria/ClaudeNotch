@@ -25,7 +25,7 @@ public sealed class SettingsWindow : Window
         Title = L.Tr("设置", "Settings");
         Width = 540; Height = 760;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        Background = Palette.Brush(Palette.Rgb(0x1F, 0x1F, 0x23));
+        Background = Palette.Brush(Palette.WindowBg);
 
         _root = new StackPanel { Margin = new Thickness(24) };
         Content = new ScrollViewer { Content = _root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -33,6 +33,7 @@ public sealed class SettingsWindow : Window
         L.Changed += () => Dispatcher.UIThread.Post(Build);
         _prices.Changed += () => Dispatcher.UIThread.Post(Build);
         _rates.Changed += () => Dispatcher.UIThread.Post(Build);
+        ActualThemeVariantChanged += (_, _) => { Background = Palette.Brush(Palette.WindowBg); Build(); };
         Build();
     }
 
@@ -57,6 +58,22 @@ public sealed class SettingsWindow : Window
                 }
             };
             _root.Children.Add(Card(Row(L.Tr("语言", "Language"), null, combo)));
+
+            // 配色:跟随系统 / 日间 / 夜间
+            var themeCombo = new ComboBox { MinWidth = 160 };
+            var modes = new[] { ("system", L.Tr("跟随系统", "System")), ("light", L.Tr("日间模式", "Light")), ("dark", L.Tr("夜间模式", "Dark")) };
+            foreach (var (val, lbl) in modes) themeCombo.Items.Add(new ComboBoxItem { Content = lbl, Tag = val });
+            themeCombo.SelectedIndex = _settings.ThemeMode switch { "light" => 1, "dark" => 2, _ => 0 };
+            themeCombo.SelectionChanged += (_, _) =>
+            {
+                if (themeCombo.SelectedItem is ComboBoxItem it && it.Tag is string mode && mode != _settings.ThemeMode)
+                {
+                    _settings.ThemeMode = mode;
+                    _settings.Save();
+                    OnSettingsApplied?.Invoke();   // → App.ApplySettings → ApplyTheme
+                }
+            };
+            _root.Children.Add(Card(Row(L.Tr("配色", "Appearance"), null, themeCombo)));
         });
 
         Section(L.Tr("通用", "General"), () =>

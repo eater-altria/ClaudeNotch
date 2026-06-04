@@ -28,8 +28,15 @@ public sealed class App : Application
     public override void Initialize()
     {
         Styles.Add(new FluentTheme());
-        RequestedThemeVariant = ThemeVariant.Dark;
+        RequestedThemeVariant = ThemeVariant.Dark;   // 初始默认,Init 里按设置覆盖
     }
+
+    void ApplyTheme() => RequestedThemeVariant = _settings.ThemeMode switch
+    {
+        "light" => ThemeVariant.Light,
+        "dark" => ThemeVariant.Dark,
+        _ => ThemeVariant.Default,   // 跟随系统
+    };
 
     public override void OnFrameworkInitializationCompleted()
     {
@@ -46,6 +53,7 @@ public sealed class App : Application
     {
         _settings = AppSettings.Load();
         L.Init(_settings.Lang);
+        ApplyTheme();
 
         _usage = new UsageStore();
         _sessions = new SessionStore();
@@ -94,6 +102,7 @@ public sealed class App : Application
 
     void ApplySettings()
     {
+        ApplyTheme();
         _usage.QuotaWarn = Math.Min(_settings.QuotaWarn, _settings.QuotaCritical);
         _usage.QuotaCritical = Math.Max(_settings.QuotaWarn, _settings.QuotaCritical);
         _usage.NotificationsEnabled = _settings.NotificationsEnabled;

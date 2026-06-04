@@ -7,6 +7,7 @@ namespace ClaudeNotch.Core;
 public sealed class AppSettings
 {
     public string LanguagePreference { get; set; } = "system";
+    public string ThemeMode { get; set; } = "system";   // system | light | dark（配色，跟随系统/日间/夜间）
     public bool LaunchAtLogin { get; set; }
     public bool WidgetEnabled { get; set; } = true;
     public bool ManageStatusline { get; set; } = true;

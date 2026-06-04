@@ -34,13 +34,14 @@ public sealed class AnalyticsWindow : Window
         Title = L.Tr("数据统计", "Analytics");
         Width = 980; Height = 800;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        Background = Palette.Brush(Palette.Rgb(0x1F, 0x1F, 0x23));
+        Background = Palette.Brush(Palette.WindowBg);
 
         _root = new StackPanel { Margin = new Thickness(24) };
         Content = new ScrollViewer { Content = _root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
 
         _store.Changed += () => Dispatcher.UIThread.Post(Build);
         L.Changed += () => Dispatcher.UIThread.Post(Build);
+        ActualThemeVariantChanged += (_, _) => { Background = Palette.Brush(Palette.WindowBg); Build(); };
         Opened += (_, _) => _store.RefreshIfNeeded();
         Build();
     }
@@ -132,7 +133,7 @@ public sealed class AnalyticsWindow : Window
         var box = new Border
         {
             Height = 32, CornerRadius = new CornerRadius(6), Padding = new Thickness(2),
-            Background = Palette.Brush(Palette.Argb(0x14, 0xFF, 0xFF, 0xFF)),
+            Background = Palette.Brush(Palette.SubtleFill),
             VerticalAlignment = VerticalAlignment.Center,
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
@@ -145,7 +146,7 @@ public sealed class AnalyticsWindow : Window
                 FontSize = 12,
                 Padding = new Thickness(10, 0, 10, 0),
                 CornerRadius = new CornerRadius(4),
-                Background = sel ? Palette.Brush(Palette.Argb(0x33, 0xFF, 0xFF, 0xFF)) : Brushes.Transparent,
+                Background = sel ? Palette.Brush(Palette.Track) : Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Foreground = Palette.Brush(sel ? Fg : Dim),
                 VerticalContentAlignment = VerticalAlignment.Center,
@@ -304,7 +305,7 @@ public sealed class AnalyticsWindow : Window
             {
                 Width = barW, Height = bh, Margin = new Thickness(0, 0, gap, 0),
                 CornerRadius = new CornerRadius(2, 2, 0, 0),
-                Background = Palette.Brush(has ? Green : Palette.Argb(0x14, 0xFF, 0xFF, 0xFF)),
+                Background = Palette.Brush(has ? Green : Palette.HeatEmpty),
                 VerticalAlignment = VerticalAlignment.Bottom,
             };
             ToolTip.SetTip(bar, b.label + " · " + (_metric == HeatmapMetric.Cost ? Money.Approx(b.val) : TranscriptParser.TokensShort((int)b.val)));
@@ -417,7 +418,7 @@ public sealed class AnalyticsWindow : Window
         var g = new Grid { Margin = new Thickness(0, 4, 0, 0), ColumnDefinitions = new ColumnDefinitions("132,*,66") };
         var lbl = new TextBlock { Text = label, FontSize = 12, Foreground = Palette.Brush(Fg), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(lbl, 0); g.Children.Add(lbl);
-        var track = new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Palette.Brush(Palette.Argb(0x1A, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var track = new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Palette.Brush(Palette.SubtleFill), HorizontalAlignment = HorizontalAlignment.Stretch };
         var bar = new Border { Height = 10, CornerRadius = new CornerRadius(5), Background = Palette.Brush(Green), HorizontalAlignment = HorizontalAlignment.Left, Width = Math.Max(2, 190.0 * value / Math.Max(1, max)) };
         var bg = new Grid { VerticalAlignment = VerticalAlignment.Center }; bg.Children.Add(track); bg.Children.Add(bar);
         Grid.SetColumn(bg, 1); g.Children.Add(bg);
@@ -528,7 +529,7 @@ public sealed class AnalyticsWindow : Window
     static Color HeatColor(int level, bool inRange)
     {
         if (!inRange) return Palette.Argb(0, 0, 0, 0);
-        if (level == 0) return Palette.Argb(0x1C, 0xFF, 0xFF, 0xFF);
+        if (level == 0) return Palette.HeatEmpty;
         double[] ops = { 0.30, 0.52, 0.76, 1.0 };
         return Palette.Argb((byte)(ops[level - 1] * 255), 0x2E, 0xC7, 0x71);
     }

@@ -1,24 +1,36 @@
+using Avalonia;
 using Avalonia.Media;
+using Avalonia.Styling;
 
 namespace ClaudeNotch.UI;
 
-/// <summary>设计令牌:深色调色板 + 绿→橙→红渐变取色(与 macOS / WPF / WinUI 版口径一致)。
-/// 注意:类名不能叫 Theme —— 会与 Avalonia StyledElement.Theme(ControlTheme)属性在控件子类里冲突。</summary>
+/// <summary>设计令牌:**随主题(明/暗)自适应**的调色板 + 绿→橙→红渐变取色(与 macOS 口径一致)。
+/// 注意:类名不能叫 Theme —— 会与 Avalonia StyledElement.Theme(ControlTheme)属性在控件子类里冲突。
+/// 颜色都是“属性”(按当前 ActualThemeVariant 实时取),切主题后各窗 Rebuild 即生效。</summary>
 public static class Palette
 {
     public static Color Rgb(byte r, byte g, byte b) => Color.FromArgb(255, r, g, b);
     public static Color Argb(byte a, byte r, byte g, byte b) => Color.FromArgb(a, r, g, b);
 
-    // 悬浮挂件
-    public static readonly Color PanelBg = Argb(0xF2, 0x22, 0x22, 0x26);
-    public static readonly Color OrbBg = Argb(0xF2, 0x20, 0x20, 0x24);
-    public static readonly Color CardBg = Argb(0x18, 0xFF, 0xFF, 0xFF);
-    public static readonly Color Track = Argb(0x33, 0xFF, 0xFF, 0xFF);
-    public static readonly Color Divider = Argb(0x1F, 0xFF, 0xFF, 0xFF);
+    public static bool IsDark => (Application.Current?.ActualThemeVariant ?? ThemeVariant.Dark) == ThemeVariant.Dark;
 
-    public static readonly Color Text = Rgb(0xFA, 0xFA, 0xFC);
-    public static readonly Color TextDim = Argb(0xB0, 0xFF, 0xFF, 0xFF);
-    public static readonly Color TextFaint = Argb(0x77, 0xFF, 0xFF, 0xFF);
+    // 窗口 / 卡片 / 挂件背景
+    public static Color WindowBg => IsDark ? Rgb(0x1F, 0x1F, 0x23) : Rgb(0xF3, 0xF3, 0xF6);
+    public static Color PanelBg => IsDark ? Argb(0xF2, 0x22, 0x22, 0x26) : Argb(0xFA, 0xFB, 0xFB, 0xFD);
+    public static Color OrbBg => IsDark ? Argb(0xF2, 0x20, 0x20, 0x24) : Argb(0xFA, 0xFC, 0xFC, 0xFE);
+    public static Color CardBg => IsDark ? Argb(0x18, 0xFF, 0xFF, 0xFF) : Rgb(0xFF, 0xFF, 0xFF);
+
+    // 线/轨道/填充(暗=白叠加, 亮=黑叠加)
+    public static Color Track => IsDark ? Argb(0x33, 0xFF, 0xFF, 0xFF) : Argb(0x22, 0x00, 0x00, 0x00);
+    public static Color Divider => IsDark ? Argb(0x1F, 0xFF, 0xFF, 0xFF) : Argb(0x18, 0x00, 0x00, 0x00);
+    public static Color SubtleFill => IsDark ? Argb(0x1A, 0xFF, 0xFF, 0xFF) : Argb(0x12, 0x00, 0x00, 0x00);
+    public static Color HeatEmpty => IsDark ? Argb(0x1C, 0xFF, 0xFF, 0xFF) : Argb(0x14, 0x00, 0x00, 0x00);
+
+    // 文本
+    public static Color Text => IsDark ? Rgb(0xFA, 0xFA, 0xFC) : Rgb(0x1E, 0x1E, 0x22);
+    public static Color TextDim => IsDark ? Argb(0xB0, 0xFF, 0xFF, 0xFF) : Argb(0xC8, 0x00, 0x00, 0x00);
+    public static Color TextFaint => IsDark ? Argb(0x77, 0xFF, 0xFF, 0xFF) : Argb(0x80, 0x00, 0x00, 0x00);
+
     public static readonly Color Green = Rgb(0x2E, 0xC7, 0x71);
 
     public const string FontFamily = "Segoe UI Variable Text, Segoe UI Variable, Segoe UI";

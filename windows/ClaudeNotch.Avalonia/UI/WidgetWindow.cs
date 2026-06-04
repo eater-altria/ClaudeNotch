@@ -37,17 +37,18 @@ public sealed class WidgetWindow : Window
         Title = "ClaudeNotch";
         SystemDecorations = SystemDecorations.None;
         Background = Brushes.Transparent;
+        // 纯透明:折叠态椭圆之外全透(真·圆球)。不要 ExtendClientArea* —— 它会带一层系统背板/Mica,
+        // 在圆球四周显出半透明方块。
         TransparencyLevelHint = new[] { WindowTransparencyLevel.Transparent };
         Topmost = true;
         ShowInTaskbar = false;
         CanResize = false;
         SizeToContent = SizeToContent.WidthAndHeight;
-        ExtendClientAreaToDecorationsHint = true;
-        ExtendClientAreaChromeHints = Avalonia.Platform.ExtendClientAreaChromeHints.NoChrome;
 
         _usage.Changed += () => Dispatcher.UIThread.Post(Rebuild);
         _sessions.Changed += () => Dispatcher.UIThread.Post(Rebuild);
         L.Changed += () => Dispatcher.UIThread.Post(Rebuild);
+        ActualThemeVariantChanged += (_, _) => Rebuild();
 
         _tick = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _tick.Tick += (_, _) => Rebuild();
