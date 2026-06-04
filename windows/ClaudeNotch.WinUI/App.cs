@@ -18,9 +18,11 @@ public sealed class App : Application
     SessionStore _sessions = null!;
     ModelPriceStore _prices = null!;
     ExchangeRateStore _rates = null!;
+    HistoryStore _history = null!;
     Tray _tray = null!;
     WidgetWindow? _widget;
     SettingsWindow? _settingsWin;
+    AnalyticsWindow? _analyticsWin;
 
     public App() { }
 
@@ -38,13 +40,14 @@ public sealed class App : Application
         _sessions = new SessionStore();
         _prices = new ModelPriceStore();
         _rates = new ExchangeRateStore();
+        _history = new HistoryStore();
         _rates.Bootstrap();
         _prices.Bootstrap();
 
         _tray = new Tray
         {
             OpenSettings = ShowSettings,
-            OpenAnalytics = () => _tray.ShowBalloon("ClaudeNotch", L.Tr("数据统计页开发中", "Analytics page coming soon")),
+            OpenAnalytics = ShowAnalytics,
             RefreshAll = RefreshAll,
             ToggleWidget = ToggleWidget,
             Quit = () => Exit(),
@@ -84,6 +87,17 @@ public sealed class App : Application
         _settingsWin.Activate();
     }
 
+    void ShowAnalytics()
+    {
+        if (_analyticsWin is null)
+        {
+            _analyticsWin = new AnalyticsWindow(_history);
+            _analyticsWin.Closed += (_, _) => _analyticsWin = null;
+        }
+        _analyticsWin.Activate();
+        _history.RefreshIfNeeded();
+    }
+
     void ShowWidget()
     {
         if (_widget is null)
@@ -91,7 +105,7 @@ public sealed class App : Application
             _widget = new WidgetWindow(_usage, _sessions, _settings)
             {
                 OpenSettings = ShowSettings,
-                OpenAnalytics = () => _tray.ShowBalloon("ClaudeNotch", L.Tr("数据统计页开发中", "Analytics page coming soon")),
+                OpenAnalytics = ShowAnalytics,
                 RefreshAll = RefreshAll,
                 Quit = () => Exit(),
             };
