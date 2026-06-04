@@ -1,9 +1,26 @@
 # CLAUDE.md — Windows 版
 
-ClaudeNotch 的 **Windows 原生版**：C# / .NET 8 / WPF（+ WinForms 仅用于托盘 NotifyIcon）。
-与 macOS 版共享同一套数据来源与口径（见根 [`CLAUDE.md`](../CLAUDE.md)），UI 改为**置顶悬浮挂件**（无刘海）。
+ClaudeNotch 的 **Windows 原生版**：C# / .NET 8。
+与 macOS 版共享同一套数据来源与口径（见根 [`CLAUDE.md`](../CLAUDE.md)），UI 为**置顶悬浮挂件**（无刘海）。
 
-## 🚧 进行中：迁移到 WinUI 3（`ClaudeNotch.WinUI/`）
+## ✅ 当前方向：Avalonia 重构（`ClaudeNotch.Avalonia/`，新默认）
+
+WinUI 3 版踩坑太多（unpackaged 启动闪退/PRI、Mica 主题白屏、**逐像素透明做不出圆球**、DPI 尺寸、拖拽错乱），
+故 **Windows 版改用 Avalonia UI 重构**（mac 版不动，仍是 Swift）。Avalonia 一举解决上述痛点：
+
+- **工程**：`ClaudeNotch.Avalonia/`，Avalonia **11.3.17**，`net8.0-windows`，链接复用 `ClaudeNotch/Core/**`（零改动）。CI：`.github/workflows/windows-avalonia.yml`（self-contained win-x64 文件夹 zip，`av-v*` tag 发 Release）。
+- **本地可调试**：Avalonia 包很小，`dotnet build/run` 秒级，可本地跑+截图迭代（不像 WinUI 要下 200MB WindowsAppSDK 运行时）。
+- **悬浮球**：`Window` 透明（`SystemDecorations.None` + `Background=Transparent` + `TransparencyLevelHint=Transparent`）+ `SizeToContent.WidthAndHeight` → 折叠态画个 `Ellipse` 就是**真·圆球**（无方块、无边框）；展开面板自动贴合内容（**底部按钮永不裁切**）。
+- **拖拽**：手动 —— `PointerPressed` 记录 `PointToScreen` 起点 + `Window.Position`，`PointerMoved` 按增量 `Position = 起点+delta` 实时跟随光标；松手即停;小位移判定为点击(展开/折叠)。
+- **主题**：`FluentTheme` + `RequestedThemeVariant = Dark`（强制深色，所有窗口/内置控件一致，无白屏）。
+- **自绘**：进度环 = `Control.Render` + `StreamGeometry.ArcTo`；热力图/趋势/打卡 = `Border`/`Ellipse` 拼。趋势用**连续日期轴**(数据起始日~今天逐日)。
+- **托盘**：Avalonia `TrayIcon` + `NativeMenu`（图标 `avares://ClaudeNotch/Assets/tray.ico`）。**注意:Avalonia TrayIcon 无原生气泡通知**，`Notifier.Show` 暂为 no-op，待后续用 Win32 `Shell_NotifyIcon` 或 toast 补。
+- **statusline**：仍由 NativeAOT 助手 `ClaudeNotch.Statusline.exe`（同目录）承担；主 exe 带 `--statusline` 快退分支兜底。
+- **⚠️ 命名坑**：设计令牌静态类**不能叫 `Theme`** —— 会与 Avalonia `StyledElement.Theme`(`ControlTheme`)属性在控件子类里冲突，编译报一堆 CS1061/CS0120。本项目用 `Palette`。
+
+> 旧 `ClaudeNotch.WinUI/`（WinUI 3）与 `ClaudeNotch/`（WPF）暂留作参考，后续可删。下方 WinUI/WPF 说明仅供历史参考。
+
+## 🗄️ 历史：WinUI 3 尝试（`ClaudeNotch.WinUI/`，已弃）
 
 为更贴近 Windows 11 原生观感，正把 UI 迁到 **WinUI 3 / Windows App SDK**（设计规范见 [`WINUI3-DESIGN.md`](WINUI3-DESIGN.md)）。
 - **两套并存**：旧 `ClaudeNotch/`（WPF）保留，新 `ClaudeNotch.WinUI/` 独立编译验证（CI：`.github/workflows/windows-winui3.yml`，unpackaged + 自包含 win-x64）。绿了再切默认。
