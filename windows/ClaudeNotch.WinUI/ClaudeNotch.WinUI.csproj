@@ -21,11 +21,13 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
 
     <!--
-      ⚠️ unpackaged + 自包含的关键:app 的 PRI 必须叫 resources.pri。
-      默认 MSBuild 把它命名为 <AssemblyName>.pri(=ClaudeNotch.pri),而 unpackaged
-      资源加载器只认 exe 旁的 resources.pri → ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml
-      无法解析 → new XamlControlsResources() 直接 COMException 闪退。
-      参见 microsoft-ui-xaml#10856。
+      ⚠️ unpackaged + 自包含“能正常启动”的两个关键(缺一即启动闪退,且 CI 编译查不出、只在真机暴露):
+      ① App.xaml(ApplicationDefinition)必须存在 —— 触发 markup 编译器生成 app 的 resources.pri
+         并把框架 themeresources 合并进去。纯代码无 .xaml 时根本不生成 PRI。
+      ② PRI 必须命名为 resources.pri —— 默认是 <AssemblyName>.pri(=ClaudeNotch.pri),
+         而 unpackaged 资源加载器只认 exe 旁的 resources.pri(microsoft-ui-xaml#10856)。
+      二者缺一 → ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml 无法解析
+      → InitializeComponent()/XamlControlsResources COMException 闪退。
     -->
     <ProjectPriFileName>resources.pri</ProjectPriFileName>
 
@@ -40,7 +42,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <Product>ClaudeNotch</Product>
-    <Version>2.0.1</Version>
+    <Version>2.0.2</Version>
   </PropertyGroup>
 
   <ItemGroup>
