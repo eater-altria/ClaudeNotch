@@ -20,7 +20,7 @@
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
 
-    <!-- 自定义入口 Program.Main:让 --statusline 在不起 UI 的情况下快进快出 -->
+    <!-- 自定义入口 Program.Main:让 statusline 钩子在不起 UI 的情况下快进快出 -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <StartupObject>ClaudeNotch.Program</StartupObject>
 
