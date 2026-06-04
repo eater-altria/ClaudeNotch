@@ -52,7 +52,10 @@ public sealed class SettingsWindow : Window
         var rootGrid = new Grid();
         rootGrid.Children.Add(scroller);
         rootGrid.Children.Add(titleBar);
+        // 见 AnalyticsWindow:深色调色板 + Mica 强制深色,避免系统浅色下全白看不见。
+        rootGrid.RequestedTheme = ElementTheme.Dark;
         Content = rootGrid;
+        DarkCaptionButtons();
 
         L.Changed += () => DispatcherQueue.TryEnqueue(Build);
         _prices.Changed += () => DispatcherQueue.TryEnqueue(Build);
@@ -253,5 +256,17 @@ public sealed class SettingsWindow : Window
         var work = DisplayArea.GetFromWindowId(id, DisplayAreaFallback.Primary).WorkArea;
         var s = _appWindow.Size;
         _appWindow.Move(new PointInt32(work.X + (work.Width - s.Width) / 2, work.Y + (work.Height - s.Height) / 2));
+    }
+
+    void DarkCaptionButtons()
+    {
+        if (!AppWindowTitleBar.IsCustomizationSupported()) return;
+        var tb = _appWindow.TitleBar;
+        tb.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        tb.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        tb.ButtonForegroundColor = Microsoft.UI.Colors.White;
+        tb.ButtonInactiveForegroundColor = Theme.TextFaint;
+        tb.ButtonHoverForegroundColor = Microsoft.UI.Colors.White;
+        tb.ButtonHoverBackgroundColor = Theme.Argb(0x22, 0xFF, 0xFF, 0xFF);
     }
 }

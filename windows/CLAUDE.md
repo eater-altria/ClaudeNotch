@@ -10,7 +10,7 @@ ClaudeNotch 的 **Windows 原生版**：C# / .NET 8 / WPF（+ WinForms 仅用于
 - **Core 零改动复用**：`ClaudeNotch.WinUI` 链接编译 `ClaudeNotch/Core/**`（与 UI 框架解耦）。
 - **关键取舍**：unpackaged WinUI 3 无法逐像素透明 → 折叠挂件改为「圆角(DWM)+ Acrylic」卡片；设置/统计窗用 Mica + 自定义标题栏；托盘用 `H.NotifyIcon.WinUI`（`MenuFlyout`）；进度环 `Path/ArcSegment`、图表 `Border` 拼；通知暂用托盘气泡（原生 toast 需安装器+AUMID 快捷方式，留待有安装器后）。
 - **statusline**：仍由 NativeAOT 助手 `ClaudeNotch.Statusline.exe`（与主 exe 同目录）承担；WinUI 主 exe 也带 `--statusline` 快退分支兜底。
-- **代码态 UI（无 .xaml）**：沿用纯代码构建；唯一硬性要求是 `XamlControlsResources` 必须在 `App.OnLaunched`（非构造函数）里 merge。
+- **几乎纯代码 UI，但 `App.xaml` 必须保留**：UI 全部代码构建，**唯一的 .xaml 是 `App.xaml`（ApplicationDefinition）**——它是 unpackaged+自包含「能正常启动」的硬性前提：触发 markup 编译器生成 app 的 `resources.pri` 并合并框架 themeresources，否则 `ms-appx:///Microsoft.UI.Xaml/Themes/themeresources.xaml` 无法解析、`InitializeComponent()` 启动即 `COMException` 闪退。配套：`<ProjectPriFileName>resources.pri</ProjectPriFileName>`（默认会命名成 `<AssemblyName>.pri`，unpackaged 加载器只认 `resources.pri`，见 microsoft-ui-xaml#10856）。`App` 须 `partial` + 构造调 `InitializeComponent()`；`XamlControlsResources` 在 `App.xaml` 里声明（不再代码 merge）。**这类问题 CI 编译查不出，只在真机运行暴露。**
 
 > 迁移完成前，下方 WPF 版的模块地图与说明仍然有效（描述的是 `ClaudeNotch/`）。
 

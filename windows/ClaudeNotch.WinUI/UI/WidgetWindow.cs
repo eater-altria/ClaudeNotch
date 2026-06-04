@@ -74,6 +74,8 @@ public sealed class WidgetWindow : Window
         card.PointerMoved += OnPointerMoved;
         card.PointerReleased += OnPointerReleased;
         card.ContextFlyout = BuildMenu();
+        // 整个挂件强制深色:让默认按钮(收起/操作行)与深色面板一致,不随系统浅色发白。
+        card.RequestedTheme = ElementTheme.Dark;
         Content = card;
         DispatcherQueue.TryEnqueue(() => FitToContent(card));
     }
@@ -308,7 +310,11 @@ public sealed class WidgetWindow : Window
         {
             root.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             var d = root.DesiredSize;
-            double scale = root.XamlRoot?.RasterizationScale ?? 1.0;
+            // ResizeClient 收物理像素,DesiredSize 是 DIP → 必须按窗口 DPI 缩放。
+            // 原先用 XamlRoot.RasterizationScale,首帧 XamlRoot 可能为 null 退化成 1.0,
+            // 高 DPI(125%/150%)下窗口被算小 → 底部按钮被裁。改用 GetDpiForWindow,稳定可靠。
+            uint dpi = GetDpiForWindow(_hwnd);
+            double scale = dpi > 0 ? dpi / 96.0 : (root.XamlRoot?.RasterizationScale ?? 1.0);
             if (d.Width > 0 && d.Height > 0)
                 _appWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(d.Width * scale), (int)Math.Ceiling(d.Height * scale)));
         }
@@ -339,11 +345,14 @@ public sealed class WidgetWindow : Window
 
     void RoundCorners()
     {
-        try { int round = 2 /*DWMWCP_ROUND*/; DwmSetWindowAttribute(_hwnd, 33, ref round, sizeof(int)); }
-        catch { }
+        // 圆角(DWMWA_WINDOW_CORNER_PREFERENCE=33, DWMWCP_ROUND=2)
+        try { int round = 2; DwmSetWindowAttribute(_hwnd, 33, ref round, sizeof(int)); } catch { }
+        // 去掉 Win11 默认的窗口白边(DWMWA_BORDER_COLOR=34, DWMWA_COLOR_NONE=0xFFFFFFFE)
+        try { int none = unchecked((int)0xFFFFFFFE); DwmSetWindowAttribute(_hwnd, 34, ref none, sizeof(int)); } catch { }
     }
 
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
     [DllImport("user32.dll")] static extern bool ReleaseCapture();
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hwnd);
 }

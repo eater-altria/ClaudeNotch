@@ -54,7 +54,11 @@ public sealed class AnalyticsWindow : Window
         var rootGrid = new Grid();
         rootGrid.Children.Add(scroller);
         rootGrid.Children.Add(titleBar);
+        // 调色板是深色硬编码,但 Mica 默认跟随系统;系统浅色时浅字+浅卡叠白底 → 全白看不见。
+        // 强制深色:Mica 渲染深色变体,内置控件(ComboBox/SelectorBar/Button/滚动条)也变深,与调色板一致。
+        rootGrid.RequestedTheme = ElementTheme.Dark;
         Content = rootGrid;
+        DarkCaptionButtons();
 
         _store.Changed += () => DispatcherQueue.TryEnqueue(Build);
         L.Changed += () => DispatcherQueue.TryEnqueue(Build);
@@ -488,6 +492,19 @@ public sealed class AnalyticsWindow : Window
         var work = DisplayArea.GetFromWindowId(id, DisplayAreaFallback.Primary).WorkArea;
         var s = _appWindow.Size;
         _appWindow.Move(new PointInt32(work.X + (work.Width - s.Width) / 2, work.Y + (work.Height - s.Height) / 2));
+    }
+
+    // 自定义标题栏下,系统标题按钮(最小化/关闭)配色随深色:透明底 + 浅色前景。
+    void DarkCaptionButtons()
+    {
+        if (!AppWindowTitleBar.IsCustomizationSupported()) return;
+        var tb = _appWindow.TitleBar;
+        tb.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        tb.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        tb.ButtonForegroundColor = Microsoft.UI.Colors.White;
+        tb.ButtonInactiveForegroundColor = Theme.TextFaint;
+        tb.ButtonHoverForegroundColor = Microsoft.UI.Colors.White;
+        tb.ButtonHoverBackgroundColor = Theme.Argb(0x22, 0xFF, 0xFF, 0xFF);
     }
 
     static DateTime StartOfWeek(DateTime d) { int delta = ((int)d.DayOfWeek + 7) % 7; return d.AddDays(-delta); }
