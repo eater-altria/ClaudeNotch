@@ -15,6 +15,14 @@ final class UsageHistoryStore: ObservableObject {
     /// 首次打开窗口时调用：没加载过就构建一次。
     func refreshIfNeeded() { if !hasLoaded { refresh() } }
 
+    /// 切换代理后调用：丢弃旧聚合；若分析窗口已打开过则立即按新来源重建，否则留待下次打开懒构建。
+    func rebuild() {
+        let wasLoaded = hasLoaded
+        hasLoaded = false
+        history = UsageHistory()
+        if wasLoaded { refresh() }
+    }
+
     func refresh() {
         if isBuilding { return }
         isBuilding = true

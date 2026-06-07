@@ -11,6 +11,16 @@ struct ScreenOption: Identifiable, Equatable {
 @MainActor
 final class SettingsStore: ObservableObject {
 
+    /// 当前监控的 CLI 代理（Claude Code / Codex）。切换即更换额度/会话/历史的数据来源。
+    @Published var agent: AgentKind {
+        didSet {
+            guard agent != oldValue else { return }
+            UserDefaults.standard.set(agent.rawValue, forKey: Keys.agent)
+            AgentContext.current = agent
+            onAgentChange?(agent)
+        }
+    }
+
     @Published var appearance: AppearanceMode {
         didSet {
             UserDefaults.standard.set(appearance.rawValue, forKey: Keys.appearance)
@@ -90,8 +100,11 @@ final class SettingsStore: ObservableObject {
     var onNotificationConfigChange: (() -> Void)?
     /// statusLine 接管开关变化回调（AppDelegate 执行 install/uninstall）
     var onManageStatuslineChange: ((Bool) -> Void)?
+    /// 代理切换回调（AppDelegate 重置数据来源、重接/卸 statusLine、刷新各 store）
+    var onAgentChange: ((AgentKind) -> Void)?
 
     private enum Keys {
+        static let agent = "agent"
         static let appearance = "appearance"
         static let islandEnabled = "islandEnabled"
         static let selectedScreens = "selectedScreens"
@@ -107,6 +120,7 @@ final class SettingsStore: ObservableObject {
 
     init() {
         let d = UserDefaults.standard
+        agent = AgentKind(rawValue: d.string(forKey: Keys.agent) ?? "") ?? .claudeCode
         appearance = AppearanceMode(rawValue: d.string(forKey: Keys.appearance) ?? "") ?? .system
         islandEnabled = (d.object(forKey: Keys.islandEnabled) as? Bool) ?? true   // 默认开启
         selectedScreens = Set((d.array(forKey: Keys.selectedScreens) as? [String]) ?? [])
@@ -121,6 +135,7 @@ final class SettingsStore: ObservableObject {
         launchAtLogin = (SMAppService.mainApp.status == .enabled)
         // 注意：在 init 中设置 stored property 不会触发 didSet，
         // 故 appearance 需在启动后由 AppDelegate 调一次 applyAppearance()。
+        AgentContext.current = agent   // 在任何后台扫描启动前先就位（init 不触发 didSet）
         refreshScreens()
     }
 

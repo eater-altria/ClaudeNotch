@@ -41,6 +41,31 @@ public sealed class SettingsWindow : Window
     {
         _root.Children.Clear();
 
+        Section(L.Tr("监控对象", "Monitored CLI"), () =>
+        {
+            var combo = new ComboBox { MinWidth = 160 };
+            combo.Items.Add(new ComboBoxItem { Content = "Claude Code", Tag = AgentKind.ClaudeCode });
+            combo.Items.Add(new ComboBoxItem { Content = "Codex", Tag = AgentKind.Codex });
+            combo.SelectedIndex = _settings.AgentKind == AgentKind.Codex ? 1 : 0;
+            combo.SelectionChanged += (_, _) =>
+            {
+                if (combo.SelectedItem is ComboBoxItem it && it.Tag is AgentKind a && a.Save() != _settings.Agent)
+                {
+                    _settings.Agent = a.Save();
+                    _settings.Save();
+                    OnSettingsApplied?.Invoke();   // → App.ApplySettings 检测代理变更并重置数据来源
+                    Build();                        // 重绘:statusLine/集成状态随代理显隐
+                }
+            };
+            _root.Children.Add(Card(Row(L.Tr("CLI 代理", "CLI agent"), null, combo)));
+            _root.Children.Add(T(_settings.AgentKind == AgentKind.Codex
+                ? L.Tr("读取 ~/.codex/sessions 里的会话记录(额度、花费、上下文均来自其中)。",
+                       "Reads sessions from ~/.codex/sessions (quota, cost and context all come from there).")
+                : L.Tr("通过 Claude Code 的 statusLine 钩子取额度，并扫描 ~/.claude/projects 的会话。",
+                       "Quota via Claude Code's statusLine hook; sessions scanned from ~/.claude/projects."),
+                11, Palette.TextFaint, top: 4));
+        });
+
         Section(L.Tr("外观与语言", "Appearance & Language"), () =>
         {
             var combo = new ComboBox { MinWidth = 160 };
@@ -82,11 +107,12 @@ public sealed class SettingsWindow : Window
                 v => { _settings.WidgetEnabled = v; _settings.Save(); OnSettingsApplied?.Invoke(); }));
             _root.Children.Add(ToggleCard(L.Tr("开机自启动", "Launch at login"), null, _settings.LaunchAtLogin,
                 v => { _settings.LaunchAtLogin = v; _settings.Save(); StartupRegistry.Apply(v); }));
-            _root.Children.Add(ToggleCard(L.Tr("接管 Claude Code 的 statusLine", "Manage Claude Code's statusLine"),
-                L.Tr("关闭后不再改写 ~/.claude/settings.json，额度停留在最后一次。",
-                     "When off, ~/.claude/settings.json is left untouched; quota stays at the last value."),
-                _settings.ManageStatusline,
-                v => { _settings.ManageStatusline = v; _settings.Save(); OnSettingsApplied?.Invoke(); }));
+            if (_settings.AgentKind == AgentKind.ClaudeCode)
+                _root.Children.Add(ToggleCard(L.Tr("接管 Claude Code 的 statusLine", "Manage Claude Code's statusLine"),
+                    L.Tr("关闭后不再改写 ~/.claude/settings.json，额度停留在最后一次。",
+                         "When off, ~/.claude/settings.json is left untouched; quota stays at the last value."),
+                    _settings.ManageStatusline,
+                    v => { _settings.ManageStatusline = v; _settings.Save(); OnSettingsApplied?.Invoke(); }));
         });
 
         Section(L.Tr("通知", "Notifications"), () =>
@@ -129,6 +155,7 @@ public sealed class SettingsWindow : Window
             _root.Children.Add(Card(Btn(_rates.IsRefreshing ? L.Tr("刷新中…", "Refreshing…") : L.Tr("刷新汇率", "Refresh rate"), () => _ = _rates.RefreshAsync())));
         });
 
+        if (_settings.AgentKind == AgentKind.ClaudeCode)
         Section(L.Tr("集成状态", "Integration"), () =>
         {
             var diag = StatuslineHook.GetDiagnostics();

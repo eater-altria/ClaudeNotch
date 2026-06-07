@@ -78,6 +78,17 @@ struct ModelPricing {
     /// 本地硬编码兜底（无网络 / 价表未命中时用）。Claude 三族与 LiteLLM 一致，未知模型按 Sonnet 近似。
     static func fallback(_ model: String) -> ModelPricing {
         let m = model.lowercased()
+        // OpenAI / Codex 家族（LiteLLM 命中时优先用其真实价，此处仅离线/未命中兜底）。
+        // cacheWrite 对 OpenAI 无意义，置 0；window 取各族公开上下文窗口。
+        if m.contains("gpt-5") || m.contains("codex") {
+            if m.contains("nano") { return ModelPricing(input: 0.05, output: 0.40, cacheRead: 0.005, cacheWrite5m: 0, cacheWrite1h: 0, window: 400_000) }
+            if m.contains("mini") { return ModelPricing(input: 0.25, output: 2.0, cacheRead: 0.025, cacheWrite5m: 0, cacheWrite1h: 0, window: 400_000) }
+            return ModelPricing(input: 1.25, output: 10, cacheRead: 0.125, cacheWrite5m: 0, cacheWrite1h: 0, window: 400_000)
+        }
+        if m.hasPrefix("o3") || m.hasPrefix("o4") || m.contains("gpt-4") {
+            if m.contains("mini") { return ModelPricing(input: 1.10, output: 4.40, cacheRead: 0.275, cacheWrite5m: 0, cacheWrite1h: 0, window: 200_000) }
+            return ModelPricing(input: 2.0, output: 8.0, cacheRead: 0.5, cacheWrite5m: 0, cacheWrite1h: 0, window: 200_000)
+        }
         if m.contains("opus") {
             // Opus 4.x（4.5 起降价）：$5 / $25，cache read $0.5，5m 写 $6.25，1h 写 $10
             return ModelPricing(input: 5, output: 25, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10, window: 1_000_000)

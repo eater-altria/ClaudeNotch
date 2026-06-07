@@ -14,6 +14,18 @@ public readonly record struct ModelPricing(
     public static ModelPricing Fallback(string model)
     {
         var m = model.ToLowerInvariant();
+        // OpenAI / Codex 家族（LiteLLM 命中时优先用真实价；此处离线/未命中兜底，cacheWrite 对 OpenAI 无意义置 0）。
+        if (m.Contains("gpt-5") || m.Contains("codex"))
+        {
+            if (m.Contains("nano")) return new(0.05, 0.40, 0.005, 0, 0, 400_000);
+            if (m.Contains("mini")) return new(0.25, 2.0, 0.025, 0, 0, 400_000);
+            return new(1.25, 10, 0.125, 0, 0, 400_000);
+        }
+        if (m.StartsWith("o3") || m.StartsWith("o4") || m.Contains("gpt-4"))
+        {
+            if (m.Contains("mini")) return new(1.10, 4.40, 0.275, 0, 0, 200_000);
+            return new(2.0, 8.0, 0.5, 0, 0, 200_000);
+        }
         if (m.Contains("opus")) return new(5, 25, 0.5, 6.25, 10, 1_000_000);
         if (m.Contains("sonnet")) return new(3, 15, 0.30, 3.75, 6, 200_000);
         if (m.Contains("haiku")) return new(1, 5, 0.10, 1.25, 2, 200_000);

@@ -245,7 +245,7 @@ public sealed class WidgetWindow : Window
     }
 
     string WaitingText() => _usage.State == UsageState.Waiting
-        ? L.Tr("等待数据 · 在终端跑一次 claude", "Waiting · run claude once in a terminal")
+        ? L.Tr($"等待数据 · 在终端跑一次 {AgentContext.Current.CliName()}", $"Waiting · run {AgentContext.Current.CliName()} once in a terminal")
         : L.Tr("加载中…", "Loading…");
 
     static string ShortMetricLabel(UsageMetric m) => m.Id switch

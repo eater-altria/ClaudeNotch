@@ -5,7 +5,11 @@ import Foundation
 /// 未变文件直接复用、不重读。同步实现，约定在后台串行队列调用。
 enum HistoryScanner {
 
-    static var cacheFile: URL { StatuslineHook.supportDir.appendingPathComponent("usage-history.json") }
+    /// 历史缓存按代理分文件，避免 Claude/Codex 互相污染。
+    static var cacheFile: URL {
+        let name = AgentContext.current == .codex ? "usage-history-codex.json" : "usage-history.json"
+        return StatuslineHook.supportDir.appendingPathComponent(name)
+    }
     static var projectsDir: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects", isDirectory: true)
     }
@@ -14,8 +18,11 @@ enum HistoryScanner {
 
     /// 全量 + 增量构建。`progress` 回调传 0...1（在调用线程同步触发，外层负责切主线程）。
     static func build(progress: (Double) -> Void) -> UsageHistory {
+        let codex = AgentContext.current == .codex
         var cache = loadCache()
-        let files = allTranscriptFiles()
+        let files = codex
+            ? CodexPaths.allSessionFiles().map { FileMeta(url: $0.url, mtime: $0.mtime, size: $0.size) }
+            : allTranscriptFiles()
         let formatter = makeFormatter()
         var fresh: [String: FileContribution] = [:]
         var parsedCount = 0, hitCount = 0
@@ -26,7 +33,9 @@ enum HistoryScanner {
             if let cached = cache.files[key] {
                 fresh[key] = cached; hitCount += 1
             } else {
-                fresh[key] = contribution(of: f.url, formatter: formatter); parsedCount += 1
+                fresh[key] = codex ? CodexHistory.contribution(of: f.url, formatter: formatter)
+                                   : contribution(of: f.url, formatter: formatter)
+                parsedCount += 1
             }
             if i % 8 == 0 || i == files.count - 1 { progress(Double(i + 1) / Double(total)) }
         }

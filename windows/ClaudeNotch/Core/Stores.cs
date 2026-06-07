@@ -35,7 +35,8 @@ public sealed class UsageStore
 
     public void Refresh()
     {
-        var outcome = StatuslineProvider.FetchUsage();
+        var codex = AgentContext.Current == AgentKind.Codex;
+        var outcome = codex ? CodexUsageProvider.FetchUsage() : StatuslineProvider.FetchUsage();
         if (outcome is FetchOutcome.Success ok)
         {
             var snap = UsageSnapshot.From(ok.Result, DateTime.Now);
@@ -52,10 +53,22 @@ public sealed class UsageStore
         }
         else if (outcome is FetchOutcome.Failure f)
         {
-            State = File.Exists(Paths.RatelimitsFile) ? UsageState.Error : UsageState.Waiting;
+            // Codex 没数据 = 等待（直接读会话文件，无 ratelimits.json 之分）；Claude 区分等待/错误。
+            State = (!codex && File.Exists(Paths.RatelimitsFile)) ? UsageState.Error : UsageState.Waiting;
             ErrorMessage = f.Message;
         }
         Changed?.Invoke();
+    }
+
+    /// <summary>切换代理时调用：清旧快照/投影，立即按新来源重取。</summary>
+    public void OnAgentChanged()
+    {
+        Snapshot = null;
+        State = UsageState.Idle;
+        ErrorMessage = null;
+        _burn.Clear();
+        _lastBand.Clear();
+        Refresh();
     }
 
     public BurnEstimator BurnFor(string metricId) =>
@@ -68,7 +81,7 @@ public sealed class UsageStore
         _lastBand[m.Id] = band;
         if (NotificationsEnabled && band > prev && band > 0)
         {
-            Notifier.Notify(L.Tr("Claude 额度提醒", "Claude Quota Alert"),
+            Notifier.Notify(L.Tr($"{AgentContext.Current.DisplayName()} 额度提醒", $"{AgentContext.Current.DisplayName()} Quota Alert"),
                 L.Tr($"{m.Title} 已用 {m.PercentUsed}%，仅剩 {m.PercentRemaining}%",
                      $"{m.Title} at {m.PercentUsed}% used, only {m.PercentRemaining}% left"));
         }
@@ -85,6 +98,7 @@ public sealed class SessionStore
     public bool NotificationsEnabled = true;
 
     readonly SessionScanner _scanner = new();
+    readonly CodexSessionScanner _codexScanner = new();
     readonly HashSet<string> _notifiedContext = new();
     Timer? _timer;
 
@@ -96,7 +110,7 @@ public sealed class SessionStore
 
     public void Refresh()
     {
-        var result = _scanner.Scan();
+        var result = AgentContext.Current == AgentKind.Codex ? _codexScanner.Scan() : _scanner.Scan();
         Sessions = result;
         CheckContextNotifications(result);
         Changed?.Invoke();
@@ -125,6 +139,16 @@ public sealed class HistoryStore
     bool _hasLoaded;
 
     public void RefreshIfNeeded() { if (!_hasLoaded) Refresh(); }
+
+    /// <summary>切换代理后：丢弃旧聚合；若统计窗口已打开过则按新来源重建，否则留待下次打开懒构建。</summary>
+    public void Rebuild()
+    {
+        bool wasLoaded = _hasLoaded;
+        _hasLoaded = false;
+        History = new UsageHistory();
+        Changed?.Invoke();
+        if (wasLoaded) Refresh();
+    }
 
     public void Refresh()
     {

@@ -35,21 +35,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             if on { self.ensureStatuslineIfAllowed() }
             else { StatuslineHook.uninstall(purgeData: false) }
         }
+        settings.onAgentChange = { [weak self] agent in self?.handleAgentChange(agent) }
         notchManager.rebuild()
 
         NotificationManager.shared.setEnabled(settings.notificationsEnabled)
         applyNotificationConfig()
 
-        // 额度来源：首次运行先取得知情同意，再接管 Claude Code 的 statusLine。
-        if StatuslineHook.isInstalled {
-            // 已在用 = 视为已同意（老用户无感升级，不弹引导）。
-            settings.statuslineConsented = true
-            settings.didOnboard = true
-        }
-        if settings.didOnboard {
-            ensureStatuslineIfAllowed()
+        // 额度来源：Claude Code 需先取得知情同意再接管 statusLine；Codex 直接读会话文件，无需引导。
+        if settings.agent == .claudeCode {
+            if StatuslineHook.isInstalled {
+                // 已在用 = 视为已同意（老用户无感升级，不弹引导）。
+                settings.statuslineConsented = true
+                settings.didOnboard = true
+            }
+            if settings.didOnboard {
+                ensureStatuslineIfAllowed()
+            } else {
+                presentOnboarding()
+            }
         } else {
-            presentOnboarding()
+            // 切到 Codex 模式启动：确保不残留指向本 app 的 Claude statusLine。
+            StatuslineHook.uninstall(purgeData: false)
         }
 
         setupStatusItem()
@@ -83,11 +89,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         sessionStore.criticalSoundEnabled = settings.criticalSoundEnabled
     }
 
-    /// 仅在已同意且未暂停接管时，幂等接入 statusLine。
+    /// 仅在已同意且未暂停接管时，幂等接入 statusLine。Codex 不需要钩子（直接读会话文件）。
     private func ensureStatuslineIfAllowed() {
-        if settings.statuslineConsented && settings.manageStatusline {
+        if settings.agent == .claudeCode && settings.statuslineConsented && settings.manageStatusline {
             StatuslineHook.ensureInstalled()
         }
+    }
+
+    /// 代理切换：换数据来源、按需接/卸 statusLine、清空旧快照并重扫。
+    private func handleAgentChange(_ agent: AgentKind) {
+        if agent == .claudeCode {
+            ensureStatuslineIfAllowed()
+        } else {
+            StatuslineHook.uninstall(purgeData: false)   // 切到 Codex：还原 Claude 的 statusLine
+        }
+        store.agentChanged()
+        sessionStore.refresh()
+        historyStore.rebuild()
+        updateStatusTitle()
     }
 
     private func presentOnboarding() {
@@ -139,7 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let image = Bundle.main.image(forResource: "MenuBarIcon")
         image?.isTemplate = true
         image?.size = NSSize(width: 18, height: 18)
-        image?.accessibilityDescription = tr("Claude 额度", "Claude usage")
+        image?.accessibilityDescription = tr("\(AgentContext.current.displayName) 额度", "\(AgentContext.current.displayName) usage")
         return image
     }
 
@@ -153,7 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         guard let button = statusItem.button else { return }
         guard let h = store.snapshot?.headline else {
             button.attributedTitle = NSAttributedString(string: "")
-            button.setAccessibilityLabel(tr("Claude 额度", "Claude usage"))
+            button.setAccessibilityLabel(tr("\(AgentContext.current.displayName) 额度", "\(AgentContext.current.displayName) usage"))
             return
         }
         let stale = store.isStale
