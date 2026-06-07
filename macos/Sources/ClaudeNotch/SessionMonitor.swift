@@ -6,6 +6,7 @@ import SwiftUI
 final class SessionScanner {
     private let projectsDir: URL
     private var cache: [String: (mtime: Date, info: SessionInfo?)] = [:]
+    private let codex = CodexSessionScanner()
 
     init() {
         projectsDir = FileManager.default.homeDirectoryForCurrentUser
@@ -23,6 +24,7 @@ final class SessionScanner {
     /// 这样关闭某个会话后，只有它对应的文件失配被丢弃，其余在跑的会话保持不变。
     /// `maxAge` 仅作过老文件的性能护栏。
     func scan(maxAge: TimeInterval) -> [SessionInfo] {
+        if AgentContext.current == .codex { return codex.scan(maxAge: maxAge) }
         let liveProcs = ProcessProbe.liveClaudeProcesses()
         guard !liveProcs.isEmpty else { return [] }   // 没有运行中的 claude
 

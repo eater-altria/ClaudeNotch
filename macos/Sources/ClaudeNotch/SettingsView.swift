@@ -9,6 +9,19 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section(tr("监控对象", "Monitored CLI")) {
+                Picker(tr("CLI 代理", "CLI agent"), selection: $settings.agent) {
+                    ForEach(AgentKind.allCases) { a in Text(a.displayName).tag(a) }
+                }
+                .pickerStyle(.segmented)
+                Text(settings.agent == .codex
+                     ? tr("读取 ~/.codex/sessions 里的会话记录（额度、花费、上下文都来自其中）。",
+                          "Reads sessions from ~/.codex/sessions (quota, cost and context all come from there).")
+                     : tr("通过 Claude Code 的 statusLine 钩子取额度，并扫描 ~/.claude/projects 的会话。",
+                          "Quota via Claude Code's statusLine hook; sessions scanned from ~/.claude/projects."))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section(tr("外观", "Appearance")) {
                 Picker(tr("配色", "Theme"), selection: $settings.appearance) {
                     ForEach(AppearanceMode.allCases) { mode in
@@ -24,14 +37,18 @@ struct SettingsView: View {
             Section(tr("通用", "General")) {
                 Toggle(tr("开机自启动", "Launch at login"), isOn: $settings.launchAtLogin)
                 Toggle(tr("启用灵动岛", "Enable Dynamic Island"), isOn: $settings.islandEnabled)
-                Toggle(tr("接管 Claude Code 的 statusLine", "Manage Claude Code's statusLine"), isOn: $settings.manageStatusline)
-                Text(tr("关闭后不再改写 ~/.claude/settings.json，额度停留在最后一次（会标记为过期）。",
-                        "When off, ~/.claude/settings.json is left untouched and quota stays at the last value (marked stale)."))
-                    .font(.caption).foregroundStyle(.secondary)
+                if settings.agent == .claudeCode {
+                    Toggle(tr("接管 Claude Code 的 statusLine", "Manage Claude Code's statusLine"), isOn: $settings.manageStatusline)
+                    Text(tr("关闭后不再改写 ~/.claude/settings.json，额度停留在最后一次（会标记为过期）。",
+                            "When off, ~/.claude/settings.json is left untouched and quota stays at the last value (marked stale)."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
 
-            Section(tr("集成状态", "Integration")) {
-                IntegrationStatusSection(settings: settings)
+            if settings.agent == .claudeCode {
+                Section(tr("集成状态", "Integration")) {
+                    IntegrationStatusSection(settings: settings)
+                }
             }
 
             Section(tr("通知", "Notifications")) {

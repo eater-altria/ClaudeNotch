@@ -108,7 +108,7 @@ struct NotchRootView: View {
     }
 
     private func collapsedA11yLabel(_ h: UsageMetric?, _ proj: BurnProjection?) -> String {
-        guard let h else { return tr("Claude 额度：暂无数据", "Claude usage: no data") }
+        guard let h else { return tr("\(AgentContext.current.displayName) 额度：暂无数据", "\(AgentContext.current.displayName) usage: no data") }
         var s = tr("\(h.title)，剩余 \(h.percentRemaining)%", "\(h.title), \(h.percentRemaining)% left")
         if store.isStale { s += tr("，数据可能已过期", ", data may be stale") }
         else if proj?.willRunOutBeforeReset == true { s += tr("，预计刷新前用尽", ", likely to run out before reset") }
@@ -121,7 +121,7 @@ struct NotchRootView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text(tr("Claude 额度", "Claude Usage"))
+                    Text(tr("\(AgentContext.current.displayName) 额度", "\(AgentContext.current.displayName) Usage"))
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(palette.text)
                     Spacer()
@@ -236,15 +236,18 @@ struct NotchRootView: View {
     private var waitingView: some View {
         // 自诊断：区分「已接入但还没数据」与「根本没接入 statusLine」两种情形。
         // 读 store 缓存值，不在 body 里直接做磁盘 IO。
+        // Codex 直接读会话文件，无「接入/未接入」之分，等同于已接入。
         let installed = store.statuslineInstalled
+        let name = AgentContext.current.displayName
+        let cli = AgentContext.current.cliName
         return VStack(spacing: 8) {
             Image(systemName: installed ? "terminal" : "link.badge.plus")
                 .font(.system(size: 18)).foregroundStyle(palette.text(0.6))
-            Text(installed ? tr("等待 Claude Code 额度数据", "Waiting for Claude Code usage data") : tr("尚未接入 Claude Code", "Not connected to Claude Code"))
+            Text(installed ? tr("等待 \(name) 额度数据", "Waiting for \(name) usage data") : tr("尚未接入 \(name)", "Not connected to \(name)"))
                 .font(.system(size: 13, weight: .medium)).foregroundStyle(palette.text)
             Text(installed
-                 ? tr("在任意终端跑一次 claude，额度会自动出现", "Run claude once in any terminal and usage will appear")
-                 : tr("去 设置 → 集成状态 重新接入，或在终端跑一次 claude", "Go to Settings → Integration to reconnect, or run claude in a terminal"))
+                 ? tr("在任意终端跑一次 \(cli)，额度会自动出现", "Run \(cli) once in any terminal and usage will appear")
+                 : tr("去 设置 → 集成状态 重新接入，或在终端跑一次 \(cli)", "Go to Settings → Integration to reconnect, or run \(cli) in a terminal"))
                 .font(.system(size: 11)).foregroundStyle(palette.text(0.5))
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
         }
@@ -285,7 +288,9 @@ struct NotchRootView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(tr("无运行中的会话", "No running sessions"))
                         .font(.system(size: 12)).foregroundStyle(palette.text(0.4))
-                    Text(tr("仅列出正在终端运行的会话；额度仍会随 Claude Code 更新", "Only sessions running in a terminal are listed; usage still updates with Claude Code"))
+                    Text(AgentContext.current == .codex
+                         ? tr("仅列出最近活动的会话", "Only recently active sessions are listed")
+                         : tr("仅列出正在终端运行的会话；额度仍会随 Claude Code 更新", "Only sessions running in a terminal are listed; usage still updates with Claude Code"))
                         .font(.system(size: 9.5)).foregroundStyle(palette.text(0.3))
                         .fixedSize(horizontal: false, vertical: true)
                 }

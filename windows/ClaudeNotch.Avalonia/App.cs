@@ -19,6 +19,7 @@ public sealed class App : Application
     ModelPriceStore _prices = null!;
     ExchangeRateStore _rates = null!;
     HistoryStore _history = null!;
+    AgentKind _lastAgent;
 
     TrayIcon? _tray;
     WidgetWindow? _widget;
@@ -53,6 +54,8 @@ public sealed class App : Application
     {
         _settings = AppSettings.Load();
         L.Init(_settings.Lang);
+        AgentContext.Current = _settings.AgentKind;   // 后台扫描启动前先就位
+        _lastAgent = _settings.AgentKind;
         ApplyTheme();
 
         _usage = new UsageStore();
@@ -103,14 +106,25 @@ public sealed class App : Application
     void ApplySettings()
     {
         ApplyTheme();
+        AgentContext.Current = _settings.AgentKind;
         _usage.QuotaWarn = Math.Min(_settings.QuotaWarn, _settings.QuotaCritical);
         _usage.QuotaCritical = Math.Max(_settings.QuotaWarn, _settings.QuotaCritical);
         _usage.NotificationsEnabled = _settings.NotificationsEnabled;
         _sessions.ContextThreshold = _settings.ContextThreshold;
         _sessions.NotificationsEnabled = _settings.NotificationsEnabled;
 
-        if (_settings.ManageStatusline) StatuslineHook.EnsureInstalled();
+        // statusLine 仅 Claude Code 需要；Codex 直接读会话文件，确保不残留指向本 app 的钩子。
+        if (_settings.AgentKind == AgentKind.ClaudeCode && _settings.ManageStatusline) StatuslineHook.EnsureInstalled();
         else StatuslineHook.Uninstall(purgeData: false);
+
+        // 代理切换：清旧快照、按新来源重扫。
+        if (_lastAgent != _settings.AgentKind)
+        {
+            _lastAgent = _settings.AgentKind;
+            _usage.OnAgentChanged();
+            _sessions.Refresh();
+            _history.Rebuild();
+        }
 
         if (_settings.WidgetEnabled) ShowWidget();
         else _widget?.Hide();

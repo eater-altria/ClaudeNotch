@@ -31,7 +31,8 @@ make dist DEV_ID="Developer ID Application: NAME (TEAMID)"   # 签名+公证+DMG
 | 文件 | 职责 |
 |---|---|
 | `main.swift` / `AppDelegate.swift` | 入口（accessory 策略；`--statusline` 时只跑钩子助手即退出，不起 GUI）；状态栏菜单（仅 设置/刷新/退出，**无登录**）；启动 `ensureInstalled()` 接钩子、`applicationWillTerminate` 时 `uninstall(purgeData:false)` 还原 settings.json（保留数据）；串联各 store/manager |
-| `UsageProvider.swift` | `FetchOutcome`（success/failure）+ 来源抽象 `UsageProvider` + `StatuslineProvider`（读 statusline 钩子落盘的额度，**唯一来源**） |
+| `UsageProvider.swift` | `FetchOutcome`（success/failure）+ 来源抽象 `UsageProvider` + `StatuslineProvider`（读 statusline 钩子落盘的额度，Claude 来源） |
+| `CodexSupport.swift` | **Codex 全部专属逻辑**：`AgentKind`/`AgentContext`（全局当前代理）、`CodexPaths`（`~/.codex` / `CODEX_HOME`）、rollout JSONL 解析、`CodexUsageProvider`（额度）、`CodexSessionScanner`（活跃会话）、`CodexHistory`（历史聚合）。其余文件按 `AgentContext.current` 做最小分支 |
 | `StatuslineHook.swift` | 与 Claude Code `statusLine` 钩子对接：`--statusline` 助手（读 stdin→落盘 `rate_limits`→透传原命令）+ `ensureInstalled`/install/uninstall（改写 `~/.claude/settings.json`，整文件备份 + 链接/原样还原原 statusline 对象，路径变化自愈） |
 | `UsageStore.swift` | 订阅额度状态机（idle/loading/ready/**waiting**/error，无 loggedOut）+ 5 分钟刷新 + 消耗速率投影 + 额度阈值通知；来源仅 `StatuslineProvider` |
 | `UsageModels.swift` | 额度数据/解析/颜色/投影；`*ResetAt: Date?` 绝对刷新时刻、`capturedAt` 决定「更新于」新鲜度 |

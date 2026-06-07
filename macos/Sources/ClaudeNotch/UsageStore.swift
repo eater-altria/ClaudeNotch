@@ -23,8 +23,12 @@ final class UsageStore: ObservableObject {
     private var estimators: [String: BurnEstimator] = [:]
     @Published private(set) var projections: [String: BurnProjection] = [:]
 
-    // 唯一来源：Claude Code 的 statusLine 钩子（合规、本地、不复用令牌）。
-    private let provider = StatuslineProvider()
+    // 额度来源按当前代理选择：Claude Code = statusLine 钩子；Codex = 会话 JSONL 内嵌的 rate_limits。
+    private let claudeProvider = StatuslineProvider()
+    private let codexProvider = CodexUsageProvider()
+    private var provider: UsageProvider {
+        AgentContext.current == .codex ? codexProvider : claudeProvider
+    }
     private var refreshTimer: Timer?
     let refreshInterval: TimeInterval = 300   // 5 分钟
 
@@ -35,9 +39,21 @@ final class UsageStore: ObservableObject {
         }
     }
 
+    /// 切换代理时调用：清掉旧快照与投影，立即按新来源重取（避免显示上一个代理的额度）。
+    func agentChanged() {
+        snapshot = nil
+        lastUpdated = nil
+        projections = [:]
+        estimators = [:]
+        notifiedThreshold = [:]
+        state = .idle
+        Task { await refresh() }
+    }
+
     func refresh() async {
         if case .loading = state { return }
-        statuslineInstalled = StatuslineHook.isInstalled   // 5 分钟缓存一次，避免渲染时做磁盘 IO
+        // statusLine 仅 Claude 相关；Codex 直接读会话文件，不需要钩子。
+        statuslineInstalled = AgentContext.current == .codex ? true : StatuslineHook.isInstalled
         if snapshot == nil { state = .loading }
         let outcome = await provider.fetchUsage()
         if ProcessInfo.processInfo.environment["CLAUDENOTCH_DEBUG"] != nil {
@@ -78,7 +94,7 @@ final class UsageStore: ObservableObject {
                 notifiedThreshold[m.id] = band
                 NotificationManager.shared.notify(
                     id: "quota-\(m.id)-\(band)",
-                    title: tr("Claude 额度提醒", "Claude Usage Alert"),
+                    title: tr("\(AgentContext.current.displayName) 额度提醒", "\(AgentContext.current.displayName) Usage Alert"),
                     body: tr("\(m.title) 已用 \(used)%，仅剩 \(m.percentRemaining)%", "\(m.title) at \(used)% used, only \(m.percentRemaining)% left"),
                     sound: criticalSoundEnabled && band >= quotaCriticalBand)
             } else if band < last {

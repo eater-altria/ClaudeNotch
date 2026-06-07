@@ -52,6 +52,7 @@ WinUI 3 版踩坑太多（unpackaged 启动闪退/PRI、Mica 主题白屏、**�
 | `Core/Paths.cs` | `%USERPROFILE%\.claude`（settings.json/projects）、`%APPDATA%\ClaudeNotch`（支持目录） |
 | `Core/StatuslineHook.cs` | `--statusline` 助手 + 安装/卸载（改写 settings.json，备份 + 透传原命令；Windows 透传走 `cmd /c`） |
 | `Core/UsageProvider.cs` / `UsageModels.cs` | 读 ratelimits.json → 额度快照；指标/投影/颜色 |
+| `Core/Codex.cs` | **Codex 全部专属逻辑**：`AgentKind`/`AgentContext.Current`（全局当前代理，默认 Claude Code）、`CodexPaths`（`%USERPROFILE%\.codex` / `CODEX_HOME`）、rollout JSONL 解析、`CodexUsageProvider`（额度）、`CodexSessionScanner`、`CodexHistory`。其余 Core 文件按 `AgentContext.Current` 最小分支。**改动全为加法，WPF/WinUI/Avalonia 三 UI 均不受影响（默认即旧行为）** |
 | `Core/ModelPricing.cs` | 定价 + 归一化匹配 + LiteLLM 价表(内置快照+周刷新) + 手动覆盖（与 mac 同口径） |
 | `Core/HistoryModels.cs` / `HistoryScanner.cs` | token 桶/单行解析/按天聚合 + 增量历史扫描 |
 | `Core/SessionScanner.cs` | 活跃会话扫描 |

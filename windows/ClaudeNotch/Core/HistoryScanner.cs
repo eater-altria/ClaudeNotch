@@ -27,10 +27,18 @@ public static class HistoryScanner
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    /// <summary>历史缓存按代理分文件，避免 Claude/Codex 互相污染。</summary>
+    static string CacheFile => AgentContext.Current == AgentKind.Codex
+        ? Path.Combine(Paths.SupportDir, "usage-history-codex.json")
+        : Paths.HistoryCacheFile;
+
     public static UsageHistory Build(Action<double>? progress = null)
     {
+        var codex = AgentContext.Current == AgentKind.Codex;
         var cache = LoadCache();
-        var files = AllTranscriptFiles();
+        var files = codex
+            ? CodexPaths.AllSessionFiles()
+            : AllTranscriptFiles();
         var fresh = new Dictionary<string, FileContribution>();
 
         int total = Math.Max(1, files.Count);
@@ -39,7 +47,7 @@ public static class HistoryScanner
             var f = files[i];
             var key = FileKey(f.path, f.mtime, f.size);
             if (cache.Files.TryGetValue(key, out var cached)) fresh[key] = cached;
-            else fresh[key] = Contribution(f.path);
+            else fresh[key] = codex ? CodexHistory.Contribution(f.path) : Contribution(f.path);
             if (i % 8 == 0 || i == files.Count - 1) progress?.Invoke((double)(i + 1) / total);
         }
 
@@ -113,9 +121,9 @@ public static class HistoryScanner
     {
         try
         {
-            if (File.Exists(Paths.HistoryCacheFile))
+            if (File.Exists(CacheFile))
             {
-                var c = JsonSerializer.Deserialize<HistoryCache>(File.ReadAllText(Paths.HistoryCacheFile), CacheOpts);
+                var c = JsonSerializer.Deserialize<HistoryCache>(File.ReadAllText(CacheFile), CacheOpts);
                 if (c is not null && c.Version == HistoryCache.CurrentVersion) return c;
             }
         }
@@ -128,7 +136,7 @@ public static class HistoryScanner
         try
         {
             Directory.CreateDirectory(Paths.SupportDir);
-            File.WriteAllText(Paths.HistoryCacheFile, JsonSerializer.Serialize(c, CacheOpts));
+            File.WriteAllText(CacheFile, JsonSerializer.Serialize(c, CacheOpts));
         }
         catch { }
     }
