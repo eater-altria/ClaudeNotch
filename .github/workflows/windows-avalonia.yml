@@ -17,6 +17,11 @@ on:
       - 'windows/ClaudeNotch.Statusline/**'
       - '.github/workflows/windows-avalonia.yml'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: '把构建产物直接上传到这个已存在的 release tag（如 v3.0.1）；留空只出 artifact'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -64,3 +69,17 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: windows/ClaudeNotch-avalonia-x64.zip
+
+      # 手动 dispatch 带 release_tag 时：runner 上直接把 zip 传到该 release（免本地下载产物再上传）。
+      # 资产命名沿用发版惯例：ClaudeNotch-<版本号去 v>-windows-x64.zip
+      - name: Upload to release (workflow_dispatch with release_tag)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.event.inputs.release_tag }}"
+          $ver = $tag -replace '^v', ''
+          $asset = "ClaudeNotch-$ver-windows-x64.zip"
+          Copy-Item ClaudeNotch-avalonia-x64.zip $asset
+          gh release upload $tag $asset --clobber -R ${{ github.repository }}
