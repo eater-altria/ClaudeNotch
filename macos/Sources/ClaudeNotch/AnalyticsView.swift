@@ -226,7 +226,7 @@ struct AnalyticsView: View {
     private func isApproxPriced(_ m: String) -> Bool {
         if PriceCatalog.shared.match(m) != nil { return false }   // LiteLLM 有真实单价 → 非估
         let l = m.lowercased()
-        return !(l.contains("opus") || l.contains("sonnet") || l.contains("haiku"))
+        return !(l.contains("fable") || l.contains("opus") || l.contains("sonnet") || l.contains("haiku"))
     }
     private func metricStr(_ v: Double) -> String {
         metric == .cost ? approxMoney(v) : formatTokens(Int(v))

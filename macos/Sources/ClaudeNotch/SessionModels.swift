@@ -42,17 +42,21 @@ struct SessionInfo: Identifiable {
     /// 峰值是否明显高于当前（如 /compact 后回落）——决定是否值得单独展示「峰」。
     var hasMeaningfulPeak: Bool { peakContextTokens > contextTokens }
 
-    /// 模型短名：claude-opus-4-8 -> Opus 4.8
+    /// 模型短名：claude-opus-4-8 -> Opus 4.8，claude-fable-5 -> Fable 5
     var modelShort: String {
         let m = model.lowercased()
         func ver() -> String {
-            // 抓 “4-8” / “4-6” 这类
+            // 抓 “4-8” / “4-6” 这类；单段版本号（fable-5）退化抓首个数字
             if let r = model.range(of: #"\d+-\d+"#, options: .regularExpression) {
                 return String(model[r]).replacingOccurrences(of: "-", with: ".")
+            }
+            if let r = model.range(of: #"\d+"#, options: .regularExpression) {
+                return String(model[r])
             }
             return ""
         }
         let v = ver()
+        if m.contains("fable") { return "Fable \(v)".trimmingCharacters(in: .whitespaces) }
         if m.contains("opus") { return "Opus \(v)".trimmingCharacters(in: .whitespaces) }
         if m.contains("sonnet") { return "Sonnet \(v)".trimmingCharacters(in: .whitespaces) }
         if m.contains("haiku") { return "Haiku \(v)".trimmingCharacters(in: .whitespaces) }
@@ -88,6 +92,10 @@ struct ModelPricing {
         if m.hasPrefix("o3") || m.hasPrefix("o4") || m.contains("gpt-4") {
             if m.contains("mini") { return ModelPricing(input: 1.10, output: 4.40, cacheRead: 0.275, cacheWrite5m: 0, cacheWrite1h: 0, window: 200_000) }
             return ModelPricing(input: 2.0, output: 8.0, cacheRead: 0.5, cacheWrite5m: 0, cacheWrite1h: 0, window: 200_000)
+        }
+        if m.contains("fable") {
+            // Fable 5（Opus 之上的新档）：$10 / $50，cache read $1，5m 写 $12.5，1h 写 $20，1M 上下文
+            return ModelPricing(input: 10, output: 50, cacheRead: 1.0, cacheWrite5m: 12.5, cacheWrite1h: 20, window: 1_000_000)
         }
         if m.contains("opus") {
             // Opus 4.x（4.5 起降价）：$5 / $25，cache read $0.5，5m 写 $6.25，1h 写 $10

@@ -26,6 +26,8 @@ public readonly record struct ModelPricing(
             if (m.Contains("mini")) return new(1.10, 4.40, 0.275, 0, 0, 200_000);
             return new(2.0, 8.0, 0.5, 0, 0, 200_000);
         }
+        // Fable 5（Opus 之上的新档）：$10 / $50，cache read $1，5m 写 $12.5，1h 写 $20，1M 上下文
+        if (m.Contains("fable")) return new(10, 50, 1.0, 12.5, 20, 1_000_000);
         if (m.Contains("opus")) return new(5, 25, 0.5, 6.25, 10, 1_000_000);
         if (m.Contains("sonnet")) return new(3, 15, 0.30, 3.75, 6, 200_000);
         if (m.Contains("haiku")) return new(1, 5, 0.10, 1.25, 2, 200_000);
