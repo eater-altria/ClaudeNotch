@@ -233,12 +233,16 @@ public static class TranscriptParser
     }
 
     static readonly Regex VerRe = new(@"\d+-\d+", RegexOptions.Compiled);
+    static readonly Regex SingleVerRe = new(@"\d+", RegexOptions.Compiled);
 
     public static string ShortModelName(string model)
     {
         var m = model.ToLowerInvariant();
         var match = VerRe.Match(model);
-        var v = match.Success ? match.Value.Replace('-', '.') : "";
+        // 单段版本号（fable-5）退化抓首个数字
+        var single = SingleVerRe.Match(model);
+        var v = match.Success ? match.Value.Replace('-', '.') : (single.Success ? single.Value : "");
+        if (m.Contains("fable")) return ("Fable " + v).Trim();
         if (m.Contains("opus")) return ("Opus " + v).Trim();
         if (m.Contains("sonnet")) return ("Sonnet " + v).Trim();
         if (m.Contains("haiku")) return ("Haiku " + v).Trim();
@@ -251,7 +255,7 @@ public static class TranscriptParser
     {
         if (PriceCatalog.Shared.Match(model) is not null) return false;
         var l = model.ToLowerInvariant();
-        return !(l.Contains("opus") || l.Contains("sonnet") || l.Contains("haiku"));
+        return !(l.Contains("fable") || l.Contains("opus") || l.Contains("sonnet") || l.Contains("haiku"));
     }
 
     public static string TokensShort(int n)

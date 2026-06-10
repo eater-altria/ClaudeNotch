@@ -246,16 +246,20 @@ func parseAssistantUsageLine(_ line: String) -> ParsedUsageLine? {
         tokens: tokens)
 }
 
-/// 模型短名：claude-opus-4-8 -> Opus 4.8；未知模型原样返回。（独立于 SessionInfo 的同名逻辑）
+/// 模型短名：claude-opus-4-8 -> Opus 4.8，claude-fable-5 -> Fable 5；未知模型原样返回。（独立于 SessionInfo 的同名逻辑）
 func shortModelName(_ model: String) -> String {
     let m = model.lowercased()
     func ver() -> String {
         if let r = model.range(of: #"\d+-\d+"#, options: .regularExpression) {
             return String(model[r]).replacingOccurrences(of: "-", with: ".")
         }
+        if let r = model.range(of: #"\d+"#, options: .regularExpression) {
+            return String(model[r])
+        }
         return ""
     }
     let v = ver()
+    if m.contains("fable") { return "Fable \(v)".trimmingCharacters(in: .whitespaces) }
     if m.contains("opus") { return "Opus \(v)".trimmingCharacters(in: .whitespaces) }
     if m.contains("sonnet") { return "Sonnet \(v)".trimmingCharacters(in: .whitespaces) }
     if m.contains("haiku") { return "Haiku \(v)".trimmingCharacters(in: .whitespaces) }
